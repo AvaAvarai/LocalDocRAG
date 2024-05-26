@@ -148,7 +148,7 @@ def load_embeddings_from_csv(csv_file):
     sentences = list(zip(df['original_sentence'], df['cleaned_sentence'], df['source']))
     return sentences, embeddings
 
-def find_top_k_similar(question, embeddings, sentences, k=3):
+def find_top_k_similar(question, embeddings, sentences, k):
     model = SentenceTransformer('sentence-transformers/nli-roberta-large')
     question_embedding = model.encode(question).astype(np.float32)
     similarities = util.pytorch_cos_sim(question_embedding, embeddings)[0]
@@ -160,11 +160,19 @@ def find_top_k_similar(question, embeddings, sentences, k=3):
 def generate_response(question, top_k_sentences, original_texts):
     qa_pipeline = pipeline("question-answering", model="deepset/roberta-large-squad2")
     context = []
+    total_tokens = 0
+    max_tokens = 512  # Assuming a reasonable limit for the context
     for sentence, _, source in top_k_sentences:
         idx = original_texts[source].index(sentence)
         start_idx = max(0, idx - 1)
         end_idx = min(len(original_texts[source]), idx + 2)
-        context.extend(original_texts[source][start_idx:end_idx])
+        context_sentences = original_texts[source][start_idx:end_idx]
+        context_text = ' '.join(context_sentences)
+        context_tokens = len(context_text.split())
+        if total_tokens + context_tokens > max_tokens:
+            break
+        context.extend(context_sentences)
+        total_tokens += context_tokens
     combined_context = ' '.join(context)
     answer = qa_pipeline(question=question, context=combined_context)
     return answer['answer']
@@ -175,38 +183,55 @@ class ChatInterfaceApp:
         self.sentences = sentences
         self.embeddings = embeddings
         self.original_texts = original_texts
+        self.k = 3  # Default value for top K
+
         self.root.title("CWU-VKD-LAB Question and Answer System")
 
-        self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20, font=("Helvetica", 12), padx=10, pady=10, state=tk.DISABLED, borderwidth=2, relief="solid")
-        self.text_area.grid(column=0, row=0, padx=10, pady=10, columnspan=2)
+        self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Helvetica", 12), padx=10, pady=10, state=tk.DISABLED, borderwidth=2, relief="solid")
+        self.text_area.grid(row=0, column=0, padx=10, pady=10, columnspan=3, sticky="nsew")
 
-        self.entry = tk.Entry(root, width=80, font=("Helvetica", 12))
-        self.entry.grid(column=0, row=1, padx=10, pady=10, sticky="w")
+        self.text_area.tag_config("user", foreground="blue")
+        self.text_area.tag_config("system", foreground="green")
+        self.text_area.tag_config("ai", foreground="purple")
+
+        self.entry = tk.Entry(root, font=("Helvetica", 12))
+        self.entry.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
         self.send_button = tk.Button(root, text="Send", command=self.query, font=("Helvetica", 12))
-        self.send_button.grid(column=1, row=1, padx=10, pady=10, sticky="e")
+        self.send_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
 
         self.k_label = tk.Label(root, text="Top K:", font=("Helvetica", 12))
-        self.k_label.grid(column=0, row=2, padx=10, pady=5, sticky="w")
+        self.k_label.grid(row=1, column=2, padx=10, pady=10, sticky="e")
 
-        self.k_spinbox = Spinbox(root, from_=1, to=10, width=5, font=("Helvetica", 12))
-        self.k_spinbox.grid(column=1, row=2, padx=10, pady=5, sticky="e")
+        self.k_spinbox = Spinbox(root, from_=1, to=10, width=3, font=("Helvetica", 12), command=self.update_k)
+        self.k_spinbox.grid(row=1, column=3, padx=10, pady=10, sticky="w")
+        self.k_spinbox.delete(0, "end")
+        self.k_spinbox.insert(0, "3")
+        
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=0)
+        self.root.grid_columnconfigure(2, weight=0)
+        self.root.grid_columnconfigure(3, weight=0)
+
+    def update_k(self):
+        self.k = int(self.k_spinbox.get())
 
     def query(self):
         question = self.entry.get()
-        k = int(self.k_spinbox.get())
+        self.update_k()
         if question:
             self.text_area.config(state=tk.NORMAL)
             self.text_area.insert(tk.END, f"You: {question}\n", "user")
             self.entry.delete(0, tk.END)
-
-            top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences, k=k)
-            self.text_area.insert(tk.END, f"\nSYSTEM: Top {k} most similar sentences to the question:\n", "system")
+            
+            top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences, self.k)
+            self.text_area.insert(tk.END, "\nSYSTEM: Top most similar sentences to the question:\n", "system")
             for i, (sentence, _, source) in enumerate(top_k_sentences):
                 self.text_area.insert(tk.END, f"{i+1}. {sentence} (Similarity: {top_k_similarities[i]:.2f})\n", "system")
             
             response = generate_response(question, top_k_sentences, self.original_texts)
-            self.text_area.insert(tk.END, f"\nAI: {response}\n", "ai")
+            self.text_area.insert(tk.END, f"\nAnswer: {response}\n", "ai")
             
             self.text_area.insert(tk.END, "\n" + "="*80 + "\n\n")
             self.text_area.config(state=tk.DISABLED)
