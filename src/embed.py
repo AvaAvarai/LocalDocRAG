@@ -6,7 +6,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow warnings
 
 import re
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, Spinbox
 from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
@@ -148,7 +148,7 @@ def load_embeddings_from_csv(csv_file):
     sentences = list(zip(df['original_sentence'], df['cleaned_sentence'], df['source']))
     return sentences, embeddings
 
-def find_top_k_similar(question, embeddings, sentences, k=5):
+def find_top_k_similar(question, embeddings, sentences, k=3):
     model = SentenceTransformer('sentence-transformers/nli-roberta-large')
     question_embedding = model.encode(question).astype(np.float32)
     similarities = util.pytorch_cos_sim(question_embedding, embeddings)[0]
@@ -175,31 +175,38 @@ class ChatInterfaceApp:
         self.sentences = sentences
         self.embeddings = embeddings
         self.original_texts = original_texts
-        self.root.title("CWU-VKD-LAB Question and Answer Chatbot")
+        self.root.title("CWU-VKD-LAB Question and Answer System")
 
-        self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20, state=tk.DISABLED)
+        self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20, font=("Helvetica", 12), padx=10, pady=10, state=tk.DISABLED, borderwidth=2, relief="solid")
         self.text_area.grid(column=0, row=0, padx=10, pady=10, columnspan=2)
 
-        self.entry = tk.Entry(root, width=80)
+        self.entry = tk.Entry(root, width=80, font=("Helvetica", 12))
         self.entry.grid(column=0, row=1, padx=10, pady=10, sticky="w")
 
-        self.send_button = tk.Button(root, text="Send", command=self.query)
+        self.send_button = tk.Button(root, text="Send", command=self.query, font=("Helvetica", 12))
         self.send_button.grid(column=1, row=1, padx=10, pady=10, sticky="e")
+
+        self.k_label = tk.Label(root, text="Top K:", font=("Helvetica", 12))
+        self.k_label.grid(column=0, row=2, padx=10, pady=5, sticky="w")
+
+        self.k_spinbox = Spinbox(root, from_=1, to=10, width=5, font=("Helvetica", 12))
+        self.k_spinbox.grid(column=1, row=2, padx=10, pady=5, sticky="e")
 
     def query(self):
         question = self.entry.get()
+        k = int(self.k_spinbox.get())
         if question:
             self.text_area.config(state=tk.NORMAL)
-            self.text_area.insert(tk.END, f"You: {question}\n")
+            self.text_area.insert(tk.END, f"You: {question}\n", "user")
             self.entry.delete(0, tk.END)
 
-            top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences)
-            self.text_area.insert(tk.END, "SYSTEM: Top 5 most similar sentences to the question:\n")
+            top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences, k=k)
+            self.text_area.insert(tk.END, f"\nSYSTEM: Top {k} most similar sentences to the question:\n", "system")
             for i, (sentence, _, source) in enumerate(top_k_sentences):
-                self.text_area.insert(tk.END, f"{i+1}. {sentence} (Similarity: {top_k_similarities[i]:.2f})\n")
+                self.text_area.insert(tk.END, f"{i+1}. {sentence} (Similarity: {top_k_similarities[i]:.2f})\n", "system")
             
             response = generate_response(question, top_k_sentences, self.original_texts)
-            self.text_area.insert(tk.END, f"AI: {response}\n")
+            self.text_area.insert(tk.END, f"\nAI: {response}\n", "ai")
             
             self.text_area.insert(tk.END, "\n" + "="*80 + "\n\n")
             self.text_area.config(state=tk.DISABLED)
