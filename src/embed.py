@@ -81,7 +81,7 @@ def clean_and_split_text(text, source):
                 cleaned_sentences.append((sentence, cleaned_sentence, source))
     
     unique_sentences = list(dict.fromkeys(cleaned_sentences))
-    return unique_sentences
+    return unique_sentences, sentences
 
 def generate_embeddings(sentences):
     with warnings.catch_warnings():
@@ -156,22 +156,25 @@ def find_top_k_similar(question, embeddings, sentences, k=5):
     top_k_similarities = [similarities[i].item() for i in top_k_indices]
     return top_k_sentences, top_k_similarities
 
-def generate_response(question, top_k_sentences):
-    qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
-    answers = []
-    for sentence, _, _ in top_k_sentences:
-        answer = qa_pipeline(question=question, context=sentence)
-        answers.append((answer['answer'], answer['score']))
-    # Select the answer with the highest score
-    best_answer = max(answers, key=lambda x: x[1])[0]
-    return best_answer
+def generate_response(question, top_k_sentences, original_texts):
+    qa_pipeline = pipeline("question-answering", model="deepset/roberta-large-squad2")
+    context = []
+    for sentence, _, source in top_k_sentences:
+        idx = original_texts[source].index(sentence)
+        start_idx = max(0, idx - 1)
+        end_idx = min(len(original_texts[source]), idx + 2)
+        context.extend(original_texts[source][start_idx:end_idx])
+    combined_context = ' '.join(context)
+    answer = qa_pipeline(question=question, context=combined_context)
+    return answer['answer']
 
 class ChatInterfaceApp:
-    def __init__(self, root, sentences, embeddings):
+    def __init__(self, root, sentences, embeddings, original_texts):
         self.root = root
         self.sentences = sentences
         self.embeddings = embeddings
-        self.root.title("Embedding Similarity Search")
+        self.original_texts = original_texts
+        self.root.title("CWU-VKD-LAB Question and Answer Chatbot")
 
         self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20, state=tk.DISABLED)
         self.text_area.grid(column=0, row=0, padx=10, pady=10, columnspan=2)
@@ -190,10 +193,11 @@ class ChatInterfaceApp:
             self.entry.delete(0, tk.END)
 
             top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences)
+            self.text_area.insert(tk.END, "SYSTEM: Top 5 most similar sentences to the question:\n")
+            for i, (sentence, _, source) in enumerate(top_k_sentences):
+                self.text_area.insert(tk.END, f"{i+1}. {sentence} (Similarity: {top_k_similarities[i]:.2f})\n")
             
-            self.text_area.insert(tk.END, "AI: Generating a response based on the most similar sentences...\n")
-            
-            response = generate_response(question, top_k_sentences)
+            response = generate_response(question, top_k_sentences, self.original_texts)
             self.text_area.insert(tk.END, f"AI: {response}\n")
             
             self.text_area.insert(tk.END, "\n" + "="*80 + "\n\n")
@@ -210,9 +214,11 @@ def main():
     
     print("Cleaning and splitting text...")
     all_sentences = []
+    original_texts = {}
     for filename, text in pdf_texts:
-        sentences = clean_and_split_text(text, filename)
+        sentences, original_sentences = clean_and_split_text(text, filename)
         all_sentences.extend(sentences)
+        original_texts[filename] = original_sentences
 
     print("Generating embeddings...")
     embeddings, embedding_dim = generate_embeddings(all_sentences)
@@ -233,7 +239,7 @@ def main():
     
     print("Launching GUI...")
     root = tk.Tk()
-    app = ChatInterfaceApp(root, sentences, embeddings)
+    app = ChatInterfaceApp(root, sentences, embeddings, original_texts)
     root.mainloop()
 
 if __name__ == "__main__":
