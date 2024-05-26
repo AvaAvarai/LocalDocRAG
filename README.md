@@ -64,6 +64,18 @@ EmbedQA is a semantic embedding-based question-answering system that processes P
     - Provide a Tkinter-based GUI for users to input their questions and receive responses.
     - Display the top k most similar sentences and the generated response.
 
+### Token Sizes
+
+#### Embedding Generation
+
+- **Sentence Length**: The length of sentences used for embedding generation can vary, but we aim to keep them concise and semantically useful. 
+- **Model**: `sentence-transformers/nli-roberta-large` uses a fixed token size for input, and it typically handles up to 512 tokens per sentence.
+
+#### Question-Answering
+
+- **Context Size**: For the `deepset/roberta-large-squad2` model, the context size is critical. The model also handles up to 512 tokens in a single input sequence, including the question and the context.
+- **Neighboring Sentences**: We combine the top k similar sentences with their neighboring sentences to form a context. This combined context should not exceed the model's token limit of 512 tokens. If the combined context is too long, we truncate it appropriately while trying to preserve the most relevant information.
+
 ### Example Usage
 
 1. **Start the application**:
@@ -86,10 +98,6 @@ EmbedQA is a semantic embedding-based question-answering system that processes P
 - `matplotlib`: For plotting embeddings.
 - `tkinter`: For creating the graphical user interface.
 - `beautifulsoup4`: For cleaning HTML tags from text.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request for any changes or additions.
 
 ## License
 
