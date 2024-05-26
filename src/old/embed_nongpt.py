@@ -1,20 +1,16 @@
 import os
-
-# Suppress TensorFlow oneDNN optimization messages
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
 import re
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import simpledialog, scrolledtext
 from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
 import nltk
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import sent_tokenize, word_tokenize
 import spacy
-from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
@@ -23,7 +19,6 @@ from huggingface_hub.file_download import logger as hf_logger
 import logging
 from multiprocessing import Pool, cpu_count
 from bs4 import BeautifulSoup
-from transformers import pipeline
 
 # Ensure the necessary resources are downloaded once
 def initialize_resources():
@@ -47,18 +42,26 @@ def extract_text_from_pdf(filepath):
     return text
 
 def clean_text(text):
+    # Remove HTML tags using BeautifulSoup
     soup = BeautifulSoup(text, "html.parser")
     text = soup.get_text()
+    
+    # Remove non-ASCII characters
     text = re.sub(r'[^\x00-\x7F]+', ' ', text)
+    
+    # Remove multiple spaces
     text = re.sub(r'\s+', ' ', text).strip()
+    
     return text
 
 def is_semantically_useful(sentence):
     doc = nlp(sentence)
+    # Filter out sentences that are too short or contain mostly numbers/symbols
     if len(doc) < 5:
         return False
     if len([token for token in doc if token.is_alpha]) / len(doc) < 0.5:
         return False
+    # Filter out sentences that match known low-utility patterns
     if re.match(r'^NUM\b', sentence) or re.match(r'.*\bNUM\b$', sentence) or re.match(r'.*\bpp\b$', sentence):
         return False
     if any(ent.label_ in ["ORG", "PRODUCT", "WORK_OF_ART"] for ent in doc.ents):
@@ -75,6 +78,7 @@ def clean_and_split_text(text, source):
         if is_semantically_useful(sentence):
             words = word_tokenize(sentence)
             words = [word for word in words if word.isalpha() and word.lower() not in stopwords.words('english')]
+            # Remove duplicate words while maintaining order
             seen = set()
             cleaned_sentence = ' '.join([x for x in words if not (x in seen or seen.add(x))])
             if len(cleaned_sentence) > 2:
@@ -84,6 +88,7 @@ def clean_and_split_text(text, source):
     return unique_sentences
 
 def generate_embeddings(sentences):
+    # Suppress FutureWarning for huggingface_hub
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=FutureWarning)
         hf_logger.setLevel(logging.ERROR)
@@ -103,17 +108,21 @@ def save_embeddings_to_csv(sentences, embeddings, output_file):
     df.to_csv(output_file, index=False, encoding='utf-8')
 
 def plot_embeddings(embeddings, sources):
+    # Reduce dimensions with PCA
     pca = PCA(n_components=3)
     pca_result = pca.fit_transform(embeddings)
 
+    # Reduce dimensions with t-SNE
     tsne = TSNE(n_components=3, perplexity=40, n_iter=300)
     tsne_result = tsne.fit_transform(embeddings)
 
+    # Assign unique colors to each source
     unique_sources = list(set(sources))
     num_sources = len(unique_sources)
     colors = plt.get_cmap('viridis')
     source_to_color = {source: colors(i / num_sources) for i, source in enumerate(unique_sources)}
 
+    # Create a 3D scatter plot for PCA
     fig = plt.figure(figsize=(14, 6))
 
     ax = fig.add_subplot(121, projection='3d')
@@ -124,8 +133,9 @@ def plot_embeddings(embeddings, sources):
     ax.set_xlabel("PCA1")
     ax.set_ylabel("PCA2")
     ax.set_zlabel("PCA3")
-    ax.view_init(elev=20, azim=120)
+    ax.view_init(elev=20, azim=120)  # Set the initial viewing angle
 
+    # Create a 3D scatter plot for t-SNE
     ax = fig.add_subplot(122, projection='3d')
     for source in unique_sources:
         idx = [i for i, s in enumerate(sources) if s == source]
@@ -134,8 +144,9 @@ def plot_embeddings(embeddings, sources):
     ax.set_xlabel("t-SNE1")
     ax.set_ylabel("t-SNE2")
     ax.set_zlabel("t-SNE3")
-    ax.view_init(elev=20, azim=120)
+    ax.view_init(elev=20, azim=120)  # Set the initial viewing angle
 
+    # Add a single legend
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.1), ncol=7)
 
@@ -143,28 +154,18 @@ def plot_embeddings(embeddings, sources):
 
 def load_embeddings_from_csv(csv_file):
     df = pd.read_csv(csv_file)
-    embeddings = np.array(df['embedding'].apply(eval).tolist()).astype(np.float32)
+    embeddings = np.array(df['embedding'].apply(eval).tolist()).astype(np.float32)  # Ensure dtype is consistent
     sentences = list(zip(df['original_sentence'], df['cleaned_sentence'], df['source']))
     return sentences, embeddings
 
 def find_top_k_similar(question, embeddings, sentences, k=5):
     model = SentenceTransformer('sentence-transformers/nli-roberta-large')
-    question_embedding = model.encode(question).astype(np.float32)
+    question_embedding = model.encode(question).astype(np.float32)  # Ensure dtype is consistent
     similarities = util.pytorch_cos_sim(question_embedding, embeddings)[0]
     top_k_indices = similarities.topk(k).indices
     top_k_sentences = [sentences[i] for i in top_k_indices]
     top_k_similarities = [similarities[i].item() for i in top_k_indices]
     return top_k_sentences, top_k_similarities
-
-def generate_response(question, top_k_sentences):
-    qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
-    answers = []
-    for sentence, _, _ in top_k_sentences:
-        answer = qa_pipeline(question=question, context=sentence)
-        answers.append((answer['answer'], answer['score']))
-    # Select the answer with the highest score
-    best_answer = max(answers, key=lambda x: x[1])[0]
-    return best_answer
 
 class ChatInterfaceApp:
     def __init__(self, root, sentences, embeddings):
@@ -190,14 +191,13 @@ class ChatInterfaceApp:
             self.entry.delete(0, tk.END)
 
             top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences)
-            
-            self.text_area.insert(tk.END, "AI: Generating a response based on the most similar sentences...\n")
-            
-            response = generate_response(question, top_k_sentences)
-            self.text_area.insert(tk.END, f"AI: {response}\n")
+            self.text_area.insert(tk.END, "AI: Here are the most similar sentences:\n")
+            for i, (sentence, similarity) in enumerate(zip(top_k_sentences, top_k_similarities)):
+                self.text_area.insert(tk.END, f"{i+1}. {sentence[0]} (Source: {sentence[2]}, Similarity: {similarity:.4f})\n")
             
             self.text_area.insert(tk.END, "\n" + "="*80 + "\n\n")
             self.text_area.config(state=tk.DISABLED)
+
 
 def main():
     initialize_resources()
