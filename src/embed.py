@@ -31,9 +31,6 @@ def initialize_resources():
     nltk.download('punkt')
     nltk.download('stopwords')
 
-# Load spaCy model once
-nlp = spacy.load("en_core_web_sm")
-
 def load_pdfs(directory):
     pdf_files = [os.path.join(directory, filename) for filename in os.listdir(directory) if filename.endswith('.pdf')]
     with Pool(cpu_count()) as pool:
@@ -50,26 +47,34 @@ def extract_text_from_pdf(filepath):
 def clean_text(text):
     soup = BeautifulSoup(text, "html.parser")
     text = soup.get_text()
-    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text)  # Remove non-ASCII characters
+    text = re.sub(r'\s+', ' ', text).strip()  # Remove excessive whitespace
+    text = re.sub(r'\.{2,}', '.', text)  # Replace sequences of two or more periods with a single period
     return text
 
 def is_semantically_useful(sentence):
+    global nlp
     doc = nlp(sentence)
+    
     if len(doc) < 5:
         return False
     if len([token for token in doc if token.is_alpha]) / len(doc) < 0.5:
         return False
     if re.match(r'^NUM\b', sentence) or re.match(r'.*\bNUM\b$', sentence) or re.match(r'.*\bpp\b$', sentence):
         return False
-    if any(ent.label_ in ["ORG", "PRODUCT", "WORK_OF_ART"] for ent in doc.ents):
-        return False
+
     return True
 
 def clean_and_split_text(text, source):
+    global nlp
+    
     text = clean_text(text)
-    doc = nlp(text)
-    sentences = [sent.text.strip() for sent in doc.sents]
+    chunks = [text[i:i+1000000] for i in range(0, len(text), 1000000)]  # Split text into manageable chunks
+    sentences = []
+
+    for chunk in chunks:
+        doc = nlp(chunk)
+        sentences.extend([sent.text.strip() for sent in doc.sents])
 
     cleaned_sentences = []
     for sentence in sentences:
@@ -174,7 +179,7 @@ def generate_response(question, top_k_sentences, original_texts):
         context.extend(context_sentences)
         total_tokens += context_tokens
     combined_context = ' '.join(context)
-    answer = qa_pipeline(question=question, context=combined_context)
+    answer = qa_pipeline(question="Please describe to the user the answer to their question, "+question, context=combined_context)
     return answer['answer']
 
 class ChatInterfaceApp:
@@ -183,7 +188,7 @@ class ChatInterfaceApp:
         self.sentences = sentences
         self.embeddings = embeddings
         self.original_texts = original_texts
-        self.k = 3  # Default value for top K
+        self.k = 5  # Default value for top K
 
         self.root.title("CWU-VKD-LAB Question and Answer System")
 
@@ -206,7 +211,7 @@ class ChatInterfaceApp:
         self.k_spinbox = Spinbox(root, from_=1, to=10, width=3, font=("Helvetica", 12), command=self.update_k)
         self.k_spinbox.grid(row=1, column=3, padx=10, pady=10, sticky="w")
         self.k_spinbox.delete(0, "end")
-        self.k_spinbox.insert(0, "3")
+        self.k_spinbox.insert(0, self.k)  # Set default value
         
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
@@ -227,8 +232,8 @@ class ChatInterfaceApp:
             
             top_k_sentences, top_k_similarities = find_top_k_similar(question, self.embeddings, self.sentences, self.k)
             self.text_area.insert(tk.END, "\nSYSTEM: Top most similar sentences to the question:\n", "system")
-            for i, (sentence, _, source) in enumerate(top_k_sentences):
-                self.text_area.insert(tk.END, f"{i+1}. {sentence} (Similarity: {top_k_similarities[i]:.2f})\n", "system")
+            for i, (original, _, source) in enumerate(top_k_sentences):
+                self.text_area.insert(tk.END, f"{i+1}. {original} (Source: {source}) (Similarity: {top_k_similarities[i]:.2f})\n", "system")
             
             response = generate_response(question, top_k_sentences, self.original_texts)
             self.text_area.insert(tk.END, f"\nAnswer: {response}\n", "ai")
@@ -237,6 +242,10 @@ class ChatInterfaceApp:
             self.text_area.config(state=tk.DISABLED)
 
 def main():
+    global nlp
+    nlp = spacy.load("en_core_web_sm")  # Load spaCy model once and set the maximum length limit
+    nlp.max_length = 1500000  # Increase the limit
+    
     initialize_resources()
     
     pdf_directory = 'ref'
