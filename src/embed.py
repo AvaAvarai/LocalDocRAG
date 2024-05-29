@@ -147,6 +147,31 @@ def plot_embeddings(embeddings, sources):
 
     plt.show()
 
+def viz_embeddings(embeddings, sources):
+    # PCA for 50 dimensions
+    pca = PCA(n_components=50)
+    pca_result = pca.fit_transform(embeddings)
+    embeddings = pca_result
+    unique_sources = list(set(sources))
+    num_sources = len(unique_sources)
+    colors = plt.get_cmap('viridis')
+    source_to_color = {source: colors(i / num_sources) for i, source in enumerate(unique_sources)}
+
+    df = pd.DataFrame(embeddings, columns=[f"dim_{i+1}" for i in range(embeddings.shape[1])])
+    df['source'] = sources
+
+    plt.figure(figsize=(15, 8))
+
+    for source in unique_sources:
+        subset = df[df['source'] == source]
+        plt.plot(subset.drop(columns=['source']).T, color=source_to_color[source], alpha=0.2)
+
+    plt.title("Parallel Coordinates Plot of Embeddings")
+    plt.xlabel("Dimensions")
+    plt.ylabel("Values")
+    plt.legend(unique_sources, loc='upper right', bbox_to_anchor=(1.1, 1), title='Sources')
+    plt.show()
+
 def load_embeddings_from_csv(csv_file):
     df = pd.read_csv(csv_file)
     embeddings = np.array(df['embedding'].apply(eval).tolist()).astype(np.float32)
@@ -179,7 +204,7 @@ def generate_response(question, top_k_sentences, original_texts):
         context.extend(context_sentences)
         total_tokens += context_tokens
     combined_context = ' '.join(context)
-    answer = qa_pipeline(question="Please describe to the user the answer to their question, "+question, context=combined_context)
+    answer = qa_pipeline(question=question, context=combined_context)
     return answer['answer']
 
 class ChatInterfaceApp:
@@ -273,8 +298,9 @@ def main():
 
     print("Visualizing embeddings with PCA and t-SNE...")
     plot_embeddings(embeddings, [source for _, _, source in all_sentences])
-
-    print("Process completed successfully.")
+    
+    print("Visualizing embeddings with parallel coordinates using PCA for 50 dimensions...")
+    viz_embeddings(embeddings, [source for _, _, source in all_sentences])
     
     print("Loading embeddings from CSV...")
     sentences, embeddings = load_embeddings_from_csv(output_file)
