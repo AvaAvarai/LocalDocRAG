@@ -1,3 +1,7 @@
+# embed.py - Extracts text from PDF files, cleans and splits text into sentences,
+# generates sentence embeddings, saves embeddings to CSV, visualizes embeddings
+# with PCA and t-SNE, and launches a GUI for question-answering using the embeddings.
+
 import os
 
 # Suppress TensorFlow oneDNN optimization messages
@@ -178,14 +182,22 @@ def load_embeddings_from_csv(csv_file):
     sentences = list(zip(df['original_sentence'], df['cleaned_sentence'], df['source']))
     return sentences, embeddings
 
+# "Universal Sentence Encoder" by Google Research claims that angular distance
+# performs better on average with sentence embeddings than cosine similarity.
+# Angular distance is defined as 1 - arccos(cosine_similarity) / pi.
+# See paper at: https://arxiv.org/abs/1803.11175 for more details.
+def cosine_to_angular_distance(cosine_similarity):
+    return (1 - np.arccos(cosine_similarity) / np.pi)
+
 def find_top_k_similar(question, embeddings, sentences, k):
     model = SentenceTransformer('sentence-transformers/nli-roberta-large')
     question_embedding = model.encode(question).astype(np.float32)
     similarities = util.pytorch_cos_sim(question_embedding, embeddings)[0]
-    top_k_indices = similarities.topk(k).indices
+    angular_distances = cosine_to_angular_distance(similarities.numpy())
+    top_k_indices = angular_distances.argsort()[-k:][::-1]
     top_k_sentences = [sentences[i] for i in top_k_indices]
-    top_k_similarities = [similarities[i].item() for i in top_k_indices]
-    return top_k_sentences, top_k_similarities
+    top_k_angular_distances = [angular_distances[i] for i in top_k_indices]
+    return top_k_sentences, top_k_angular_distances
 
 def generate_response(question, top_k_sentences, original_texts):
     qa_pipeline = pipeline("question-answering", model="deepset/roberta-large-squad2")
@@ -307,8 +319,9 @@ def main():
     
     print("Launching GUI...")
     root = tk.Tk()
-    app = ChatInterfaceApp(root, sentences, embeddings, original_texts)
+    ChatInterfaceApp(root, sentences, embeddings, original_texts)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
