@@ -1,4 +1,2 @@
-*.csv
-*.txt
-*.env
-*.pdf
+*/*.pdf
+embeddings.csv
