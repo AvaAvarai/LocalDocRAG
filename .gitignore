@@ -1,2 +1,5 @@
-*/*.pdf
+# no subdirectories
+*/*
+
+# embeddings output
 embeddings.csv
