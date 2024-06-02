@@ -1,5 +1,3 @@
-# no subdirectories
-*/*
-
-# embeddings output
-embeddings.csv
+*.csv
+*.pdf
+ref/*/
