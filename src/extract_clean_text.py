@@ -22,6 +22,7 @@ def extract_text_from_pdf(pdf_path):
 
 def clean_text(text):
     text = re.sub(r'\s+', ' ', text)  # Replace multiple whitespace characters with a single space
+    text = re.sub(r'ISBN\s(?:97[89][-– ])?\d{1,5}[-– ]?\d+[-– ]?\d+[-– ]?[\dX]', '', text, flags=re.IGNORECASE)  # Remove ISBNs
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [sentence.strip() for sentence in sentences if sentence]
     return sentences
