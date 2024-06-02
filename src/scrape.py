@@ -25,12 +25,12 @@ def parse_paper_urls(xml_data):
             papers.append(pdf_url)
     return papers
 
-def download_pdf(url, save_dir):
+def download_pdf(url, save_dir, last_name):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
         content_type = response.headers.get('content-type')
         if 'application/pdf' in content_type:
-            filename = url.split('/')[-1] + '.pdf'
+            filename = url.split('/')[-1] + f'_{last_name}.pdf'
             file_path = os.path.join(save_dir, filename)
             with open(file_path, 'wb') as pdf_file:
                 pdf_file.write(response.content)
@@ -55,6 +55,7 @@ def scrape_arxiv_papers(authors):
         create_placeholder_file(SAVE_DIRECTORY, PLACEHOLDER_FILE)
 
     for author in authors:
+        last_name = author.split()[-1]
         author_dir = os.path.join(SAVE_DIRECTORY, author.replace(' ', '_'))
         if not os.path.exists(author_dir):
             os.makedirs(author_dir)
@@ -62,7 +63,7 @@ def scrape_arxiv_papers(authors):
         xml_data = fetch_papers_by_author(author)
         paper_urls = parse_paper_urls(xml_data)
         for url in paper_urls:
-            download_pdf(url, author_dir)
+            download_pdf(url, author_dir, last_name)
 
 
 if __name__ == "__main__":

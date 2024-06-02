@@ -1,3 +1,6 @@
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import pandas as pd
 import plotly.express as px
 from sklearn.decomposition import PCA

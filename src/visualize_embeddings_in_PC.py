@@ -1,4 +1,5 @@
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
 
 # Load the embeddings data
@@ -16,20 +17,36 @@ def prepare_data_for_visualization(df):
     df = df.drop(columns=['embedding'])
     df = pd.concat([df, embeddings], axis=1)
     
-    # Convert 'pdf_source' to categorical codes for color mapping
-    df['pdf_source_code'] = pd.Categorical(df['pdf_source']).codes
-    
     return df
 
+# Create a color mapping for pdf_source
+def assign_colors_to_sources(df):
+    unique_sources = df['pdf_source'].unique()
+    color_scale = px.colors.qualitative.Plotly
+    color_mapping = {source: color_scale[i % len(color_scale)] for i, source in enumerate(unique_sources)}
+    df['color'] = df['pdf_source'].map(color_mapping)
+    return df, color_mapping
+
 # Create Parallel Coordinates plot
-def create_parallel_coordinates_plot(df):
-    # Create the plot
-    fig = px.parallel_coordinates(df,
-                                  dimensions=[col for col in df.columns if 'embedding_' in col],
-                                  color='pdf_source_code',
-                                  labels={col: col for col in df.columns if 'embedding_' in col},
-                                  color_continuous_scale=px.colors.diverging.Tealrose,
-                                  color_continuous_midpoint=df['pdf_source_code'].max() / 2)
+def create_parallel_coordinates_plot(df, color_mapping):
+    dimensions = [dict(label=col, values=df[col]) for col in df.columns if 'embedding_' in col]
+
+    fig = go.Figure(data=go.Parcoords(
+        line=dict(color=df['color'].apply(lambda c: int(c.lstrip('#'), 16))),
+        dimensions=dimensions
+    ))
+
+    # Update the layout to add a legend
+    for source, color in color_mapping.items():
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode='markers',
+            marker=dict(size=10, color=color),
+            legendgroup=source,
+            showlegend=True,
+            name=source
+        ))
+
     fig.show()
 
 if __name__ == "__main__":
@@ -39,5 +56,8 @@ if __name__ == "__main__":
     # Prepare the data for visualization
     prepared_df = prepare_data_for_visualization(embeddings_df)
     
+    # Assign colors to sources
+    prepared_df, color_mapping = assign_colors_to_sources(prepared_df)
+    
     # Create the Parallel Coordinates plot
-    create_parallel_coordinates_plot(prepared_df)
+    create_parallel_coordinates_plot(prepared_df, color_mapping)
