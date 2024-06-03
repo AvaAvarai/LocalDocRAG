@@ -82,9 +82,7 @@ def is_meaningful_sentence(sentence):
         return False
     if re.match(r'^[a-z\s,]+,\sand\s[a-z\s,]+,\s[a-z\s,]+,\s[a-z\s,]+,\s[a-z\s,]+$', sentence):  # Filter out sentences like "michael a. goodrich, roberto tamassia, and michael h. goldwasser."
         return False
-    if re.match(r'^[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+$', sentence):  # Filter out sentences with very long lists of authors
-        return False
-    if re.match(r'^[a-zA-Z\s]+,\s[a-z\s]+,\s[a-z\s]+,\sand\s[a-z\s]+$', sentence):  # Filter out sentences like "12.2 examples of program evaluation prediction."
+    if re.match(r'^[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\sand\s[a-z\s]+$', sentence):  # Filter out sentences like "12.2 examples of program evaluation prediction."
         return False
     if re.match(r'^input:\s.*$', sentence):  # Filter out sentences starting with "input: "
         return False
@@ -96,7 +94,23 @@ def is_meaningful_sentence(sentence):
         return False
     if re.match(r'.*\b(nn0|cc|zz)\b.*', sentence):  # Filter out sentences with notation like nn0, cc, zz
         return False
-    
+    if re.match(r'.*\b(?:[online]|acm sigkdd int|repre- sentation learning|[A-Za-z]\d+)\b.*', sentence):  # Filter out sentences with specific patterns
+        return False
+    if re.match(r'.*\[online\].*', sentence):  # Filter out sentences with [online] URLs
+        return False
+    if re.match(r'^\d+[, ]+\d+\s*\[\d+\]\s*[a-zA-Z\s,]+$', sentence):  # Filter out sentences like "6, 8 [56] jingru tan, changbao wang, buyu li, quanquan li, wanli ouyang, changqing yin, and junjie yan."
+        return False
+    if re.match(r'^[a-zA-Z\s,]+\(\d+\)[a-z\s]+\.$', sentence):  # Filter out sentences like "mcclel- land, loic matthey, felix hill, and alexander lerchner."
+        return False
+    if re.match(r'^\d+\s*\([^\)]*\)\s*\[.*\]\s*[a-zA-Z\s,]+$', sentence):  # Filter out sentences like "8 11 [25] xiaowei hu, xi yin, kevin lin, lijuan wang, lei zhang, jianfeng gao, and zicheng liu."
+        return False
+    if re.match(r'^\([^\)]*\)\s*[a-zA-Z\s,]+$', sentence):  # Filter out sentences like "(cited on 1) yang song, jascha sohl-dickstein, diederik p kingma, abhishek kumar, stefano ermon, and ben poole."
+        return False
+    if re.match(r'^\[\d+\]\s*[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "references [1] harry g barrow, alistair j bray, and julian ml budd."
+        return False
+    if re.match(r'^\(\d+\)\s*[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "(cited on page 5) anna rogers, olga kovaleva, matthew downey, and anna rumshisky."
+        return False
+
     return True
 
 def filter_sentences(sentences):

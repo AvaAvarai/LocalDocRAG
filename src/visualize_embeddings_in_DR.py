@@ -83,10 +83,10 @@ def apply_dimensionality_reduction_and_plot(prepared_df, embeddings):
     umap_result = umap_model.fit_transform(embeddings)
     create_3d_plot(prepared_df, umap_result, 'UMAP 3D Plot', 'umap_3d_plot.html')
     
-    # Spectral Embedding
-    spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
-    spectral_result = spectral.fit_transform(embeddings)
-    create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
+    # # Spectral Embedding
+    # spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
+    # spectral_result = spectral.fit_transform(embeddings)
+    # create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
 
 
 if __name__ == "__main__":
