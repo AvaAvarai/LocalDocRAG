@@ -5,8 +5,8 @@ import os
 SAVE_DIRECTORY = "ref"
 PLACEHOLDER_FILE = "pdfs_go_here"
 
-def fetch_papers_by_author(author_name):
-    search_url = f'http://export.arxiv.org/api/query?search_query=au:"{author_name}"&start=0&max_results=50'
+def fetch_papers_by_author(author_name, start_index=0, max_results=50):
+    search_url = f'http://export.arxiv.org/api/query?search_query=au:"{author_name}"&start={start_index}&max_results={max_results}'
     response = requests.get(search_url)
     if response.status_code != 200:
         raise Exception(f"Error fetching papers: {response.status_code}")
@@ -26,12 +26,16 @@ def parse_paper_urls(xml_data):
     return papers
 
 def download_pdf(url, save_dir, last_name):
+    filename = url.split('/')[-1] + f'_{last_name}.pdf'
+    file_path = os.path.join(save_dir, filename)
+    if os.path.exists(file_path):
+        print(f"Already downloaded: {file_path}")
+        return file_path
+
     response = requests.get(url, stream=True)
     if response.status_code == 200:
         content_type = response.headers.get('content-type')
         if 'application/pdf' in content_type:
-            filename = url.split('/')[-1] + f'_{last_name}.pdf'
-            file_path = os.path.join(save_dir, filename)
             with open(file_path, 'wb') as pdf_file:
                 pdf_file.write(response.content)
             print(f"Downloaded: {file_path}")
@@ -60,12 +64,17 @@ def scrape_arxiv_papers(authors):
         if not os.path.exists(author_dir):
             os.makedirs(author_dir)
         
-        xml_data = fetch_papers_by_author(author)
-        paper_urls = parse_paper_urls(xml_data)
-        for url in paper_urls:
-            download_pdf(url, author_dir, last_name)
-
+        start_index = 0
+        max_results = 50
+        while True:
+            xml_data = fetch_papers_by_author(author, start_index=start_index, max_results=max_results)
+            paper_urls = parse_paper_urls(xml_data)
+            if not paper_urls:
+                break
+            for url in paper_urls:
+                download_pdf(url, author_dir, last_name)
+            start_index += max_results
 
 if __name__ == "__main__":
-    authors = ["Boris Kovalerchuk", "Razvan Andonie"]
+    authors = ["Boris Kovalerchuk", "Razvan Andonie", "Ilya Sutskever", "Yann LeCun", "Geoffrey Hinton"]
     scrape_arxiv_papers(authors)
