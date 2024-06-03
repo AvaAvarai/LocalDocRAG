@@ -88,7 +88,7 @@ def print_stats(df):
 
 if __name__ == "__main__":
     cleaned_texts_df = load_cleaned_texts('cleaned_texts.csv')
-    print("Loaded texts:", cleaned_texts_df.head())
+    print("Loaded texts:\n", cleaned_texts_df.head())
     embeddings_df = create_embeddings(cleaned_texts_df)
     save_embeddings_to_csv(embeddings_df)
     print_stats(embeddings_df)

@@ -18,6 +18,10 @@ def extract_text_from_pdf(pdf_path):
     return text.encode('utf-8', errors='ignore').decode('utf-8')
 
 def clean_text(text):
+    text = re.sub(r'-\s*\n', '', text)  # Remove hyphens at line breaks and join the words
+    text = text.replace('\n', ' ')  # Replace newlines with spaces
+    text = re.sub(r'\b"\s', '" ', text)  # Remove misplaced space after an opening quote
+    text = re.sub(r'\s"\b', ' "', text)  # Remove misplaced space before a closing quote
     text = text.lower()  # Convert text to lowercase
     text = re.sub(r'\s+', ' ', text)  # Replace multiple whitespace characters with a single space
     text = re.sub(r',,', ',', text)  # Replace double commas with a single comma
@@ -54,19 +58,19 @@ def is_meaningful_sentence(sentence):
         return False
     if re.match(r'^\d+\s*\[.*\]\s*[a-z\s,]*$', sentence):  # Filter out sentences like "12 [62] yuandong tian, xinlei chen, and surya ganguli."
         return False
-    if re.match(r'^[a-zA-Z\s]+and\s[a-zA-Z\s]+(\.|,)$', sentence):  # Filter out sentences like "piotr indyk and rajeev motwani."
+    if re.match(r'^[A-Za-z\s]+and\s[A-Za-z\s]+(\.|,)$', sentence):  # Filter out sentences like "piotr indyk and rajeev motwani."
         return False
-    if re.match(r'^[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "barrett, and kimberly l."
+    if re.match(r'^[A-Za-z\s,]+\.$', sentence):  # Filter out sentences like "barrett, and kimberly l."
         return False
-    if re.match(r'^[a-zA-Z\s,]+,\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "koehn, philipp and knight, kevin."
+    if re.match(r'^[A-Za-z\s,]+,\sand\s[A-Za-z\s,]+\.$', sentence):  # Filter out sentences like "koehn, philipp and knight, kevin."
         return False
-    if re.match(r'^[a-zA-Z\s]+,\sand\s[a-zA-Z\s]+\.$', sentence):  # Filter out sentences like "yuille, and kevin murphy."
+    if re.match(r'^[A-Za-z\s]+,\sand\s[A-Za-z\s]+\.$', sentence):  # Filter out sentences like "yuille, and kevin murphy."
         return False
-    if re.match(r'^[a-zA-Z\s]+,\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "wang, yushi, berant, jonathan, and liang, percy."
+    if re.match(r'^[A-Za-z\s]+,\sand\s[A-Za-z\s,]+\.$', sentence):  # Filter out sentences like "wang, yushi, berant, jonathan, and liang, percy."
         return False
-    if re.match(r'^[a-zA-Z\s,]+\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "bogdan mu¸ sat and r˘ azvan andonie."
+    if re.match(r'^[A-Za-z\s,]+\sand\s[A-Za-z\s,]+\.$', sentence):  # Filter out sentences like "bogdan mu¸ sat and r˘ azvan andonie."
         return False
-    if re.match(r'^[a-zA-Z\s,]+and\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "zhilu zhang and mert sabuncu."
+    if re.match(r'^[A-Za-z\s,]+and\s[A-Za-z\s,]+\.$', sentence):  # Filter out sentences like "zhilu zhang and mert sabuncu."
         return False
     if re.match(r'^[a-z\s]+,\s[a-z\s]+,\sand\s[a-z\s]+(\.|,)$', sentence):  # Filter out sentences like "cuozzo, b., dumay, j., palmaccio, m., & lombardi, r."
         return False
@@ -94,7 +98,7 @@ def is_meaningful_sentence(sentence):
         return False
     if re.match(r'.*\b(nn0|cc|zz)\b.*', sentence):  # Filter out sentences with notation like nn0, cc, zz
         return False
-    if re.match(r'.*\b(?:[online]|acm sigkdd int|repre- sentation learning|[A-Za-z]\d+)\b.*', sentence):  # Filter out sentences with specific patterns
+    if re.match(r'.*\b(?:[online]|acm sigkdd int|[A-Za-z]\d+)\b.*', sentence):  # Filter out sentences with specific patterns
         return False
     if re.match(r'.*\[online\].*', sentence):  # Filter out sentences with [online] URLs
         return False

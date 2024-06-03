@@ -11,6 +11,10 @@ EmbedQA is a semantic embedding-based question-answering system that processes P
 5. **Contextual Response Generation**: Combine the top k similar sentences and their neighboring sentences to form a context for generating a response using a question-answering model.
 6. **Graphical User Interface**: Provide a GUI for user interaction, allowing users to ask questions and get responses based on the processed PDF content.
 
+## Current Status
+
+Our project has been rebuilt and will be in a WIP (Work In Progress) state for some time.
+
 ## Installation
 
 1. **Clone the repository**:
@@ -28,18 +32,38 @@ EmbedQA is a semantic embedding-based question-answering system that processes P
 
 ### Running the Application
 
-1. **Place your PDF files**:
-    - Put your PDF files in the `ref` directory.
-
-2. **Run the main script**:
+1. **Scrape PDF Content**:
+    - Run the script to scrape PDF content.
     ```sh
-    python src/embed.py
+    python src/scrape.py
     ```
+
+2. **Clean the Extracted Text**:
+    - Run the script to clean the extracted text.
+    ```sh
+    python src/extract_clean_text.py
+    ```
+
+3. **Generate Embeddings**:
+    - Run the script to generate embeddings for the cleaned text.
+    ```sh
+    python src/create_embeddings.py
+    ```
+
+4. **Visualize the Embeddings**:
+    - Run the scripts to visualize embeddings using various dimensionality reduction techniques.
+    ```sh
+    python src/visualize_embeddings_in_DR.py  # For dimensionality reduction visualization
+    python src/visualize_embeddings_in_PC.py  # For parallel coordinates visualization
+    ```
+
+5. **Chat Interface**:
+    - The chat interface is currently unimplemented in the new version.
 
 ### Explanation of the Process
 
 1. **PDF Extraction**:
-    - Load PDF files from the specified directory and extract text from each page using `PyPDF2`.
+    - Load PDF files from the specified directory and extract text from each page using `PyMuPDF`.
 
 2. **Text Cleaning and Splitting**:
     - Clean the extracted text by removing HTML tags, non-ASCII characters, and multiple spaces.
@@ -64,40 +88,51 @@ EmbedQA is a semantic embedding-based question-answering system that processes P
     - Provide a Tkinter-based GUI for users to input their questions and receive responses.
     - Display the top k most similar sentences and the generated response.
 
-### Token Sizes
+## Embeddings Generation for Non-NVIDIA Systems
 
-#### Embedding Generation
+To support systems without NVIDIA GPUs, we convert the PyTorch model to ONNX format and use ONNX Runtime with DirectML. This enables the use of hardware-accelerated inference on a broader range of devices, including those with AMD or Intel GPUs.
 
-- **Sentence Length**: The length of sentences used for embedding generation can vary, but we aim to keep them concise and semantically useful. 
-- **Model**: `sentence-transformers/nli-roberta-large` uses a fixed token size for input, and it typically handles up to 512 tokens per sentence.
+## Subprograms for Clustering and Visualization
 
-#### Question-Answering
+### Clustering and Dimensionality Reduction
 
-- **Context Size**: For the `deepset/roberta-large-squad2` model, the context size is critical. The model also handles up to 512 tokens in a single input sequence, including the question and the context.
-- **Neighboring Sentences**: We combine the top k similar sentences with their neighboring sentences to form a context. This combined context should not exceed the model's token limit of 512 tokens. If the combined context is too long, we truncate it appropriately while trying to preserve the most relevant information.
+We use several techniques to explore clusters of semantic similarity within the embeddings:
 
-### Example Usage
+- **PCA (Principal Component Analysis)**: Reduces the dimensionality of embeddings to three principal components for 3D visualization.
+- **t-SNE (t-Distributed Stochastic Neighbor Embedding)**: Reduces the dimensionality to three components, focusing on preserving local similarities.
+- **UMAP (Uniform Manifold Approximation and Projection)**: Another dimensionality reduction technique that preserves more of the global structure compared to t-SNE.
 
-1. **Start the application**:
-    ```sh
-    python src/embed.py
-    ```
+### Visualization
 
-2. **Interact with the GUI**:
-    - Enter a question in the input field.
-    - Click "Send" to get the response generated based on the content of the PDFs in the `ref` directory.
+- **3D Plots**: We create 3D scatter plots of the reduced embeddings using Plotly. These plots allow interactive exploration of the clusters, with additional features like hovering over points to see the associated sentences.
+- **JavaScript Integration**: Custom JavaScript is added to enable copying the text of a sentence to the clipboard when clicked.
+
+## Tuning Hyperparameters with Dash
+
+We provide a Dash application for tuning UMAP hyperparameters. This application allows users to adjust parameters such as the number of neighbors, minimum distance, and metric used for computing the UMAP embedding. The resulting embeddings are visualized in a 3D scatter plot, facilitating the exploration of different clustering behaviors.
+
+## Screenshots
+
+### UMAP Visualization 1
+![UMAP 1](screenshots/umap1.png)
+
+### UMAP Visualization 2: Subcluster of Sentences with German Words
+![UMAP 2](screenshots/umap2.png)
 
 ## Dependencies
 
-- `PyPDF2`: For extracting text from PDF files.
+- `PyMuPDF`: For extracting text from PDF files.
 - `sentence-transformers`: For generating sentence embeddings.
 - `transformers`: For question answering.
 - `nltk`: For natural language processing tasks such as tokenization and stopword removal.
 - `spacy`: For advanced natural language processing tasks.
 - `scikit-learn`: For dimensionality reduction (PCA, t-SNE).
+- `umap-learn`: For UMAP dimensionality reduction.
 - `matplotlib`: For plotting embeddings.
+- `plotly`: For interactive plotting.
 - `tkinter`: For creating the graphical user interface.
 - `beautifulsoup4`: For cleaning HTML tags from text.
+- `dash`: For building the hyperparameter tuning web app.
 
 ## License
 
