@@ -8,23 +8,20 @@ from nltk import download
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Download stopwords and punkt if not already available
-download('stopwords')
-download('punkt')
-
-STOPWORDS = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
+STOPWORDS = []
 
 def extract_text_from_pdf(pdf_path):
     text = ""
     with fitz.open(pdf_path) as doc:
         for page in doc:
             text += page.get_text()
-    return text
+    return text.encode('utf-8', errors='ignore').decode('utf-8')
 
 def clean_text(text):
     text = text.lower()  # Convert text to lowercase
     text = re.sub(r'\s+', ' ', text)  # Replace multiple whitespace characters with a single space
     text = re.sub(r',,', ',', text)  # Replace double commas with a single comma
+    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-UTF-8 characters
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     sentences = [sentence.strip() for sentence in sentences if sentence]
     return sentences
@@ -33,7 +30,7 @@ def is_meaningful_sentence(sentence):
     # Heuristic rules to filter out non-meaningful sentences
     if len(sentence) < 20:  # Filter out very short sentences
         return False
-    if sentence.lower().startswith(('figure', 'table', 'definition', 'appendix', 'advances', 'ultra-strong', 'manuscript submitted', 'url', 'available at')):
+    if sentence.lower().startswith(('figure', 'table', 'definition', 'appendix', 'advances', 'ultra-strong', 'manuscript submitted', 'url', 'available at', 'alternatively', 'abstract')):
         return False
     if re.match(r'^\[\d+\]\s', sentence):  # Filter out sentences starting with "[x] " where x is a number
         return False
@@ -51,6 +48,55 @@ def is_meaningful_sentence(sentence):
         return False
     if re.search(r'\bin fig\b|\bin table\b|\bin diagram\b|\bin screenshot\b', sentence):  # Filter out sentences containing "in fig", "in table", "in diagram", "in screenshot"
         return False
+    if re.match(r'^(\d+\s?[,|\.|\s])+[a-z]*\d*$', sentence):  # Filter out sequences of numbers and patterns
+        return False
+    if re.search(r'\b(?:linear|relu|train loss|test loss|out figure|joint f|case studies|baseline prediction|naive prediction|mix prediction|combined prediction|input: print\(|input:\s|proof of)\b', sentence):  # Filter out specific keywords related to data
+        return False
+    if re.match(r'^\d+\s*\[.*\]\s*[a-z\s,]*$', sentence):  # Filter out sentences like "12 [62] yuandong tian, xinlei chen, and surya ganguli."
+        return False
+    if re.match(r'^[a-zA-Z\s]+and\s[a-zA-Z\s]+(\.|,)$', sentence):  # Filter out sentences like "piotr indyk and rajeev motwani."
+        return False
+    if re.match(r'^[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "barrett, and kimberly l."
+        return False
+    if re.match(r'^[a-zA-Z\s,]+,\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "koehn, philipp and knight, kevin."
+        return False
+    if re.match(r'^[a-zA-Z\s]+,\sand\s[a-zA-Z\s]+\.$', sentence):  # Filter out sentences like "yuille, and kevin murphy."
+        return False
+    if re.match(r'^[a-zA-Z\s]+,\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "wang, yushi, berant, jonathan, and liang, percy."
+        return False
+    if re.match(r'^[a-zA-Z\s,]+\sand\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "bogdan mu¸ sat and r˘ azvan andonie."
+        return False
+    if re.match(r'^[a-zA-Z\s,]+and\s[a-zA-Z\s,]+\.$', sentence):  # Filter out sentences like "zhilu zhang and mert sabuncu."
+        return False
+    if re.match(r'^[a-z\s]+,\s[a-z\s]+,\sand\s[a-z\s]+(\.|,)$', sentence):  # Filter out sentences like "cuozzo, b., dumay, j., palmaccio, m., & lombardi, r."
+        return False
+    if re.match(r'^[a-z\s]+(\.|,|&\s)', sentence):  # Filter out sentences like "joan bruna new york university dumitru erhan google inc."
+        return False
+    if re.match(r'^[a-z\s,.]+,\sand\s[a-z\s,.]+$', sentence):  # Filter out sentences like "tu, z., talebi, h., zhang, h., yang, f., milanfar, p., bovik, a., and li, y."
+        return False
+    if re.match(r'^[a-z\s,]+,\sand\s[a-z\s,]+$', sentence):  # Filter out sentences like "francesco tonolini, bjørn sand jensen, and roderick murray-smith."
+        return False
+    if re.match(r'^[a-z\s,]+,\sand\s[a-z\s,]+,\s[a-z\s,]+$', sentence):  # Filter out sentences like "richard yuanzhe pang and he he."
+        return False
+    if re.match(r'^[a-z\s,]+,\sand\s[a-z\s,]+,\s[a-z\s,]+,\s[a-z\s,]+$', sentence):  # Filter out sentences like "michael a. goodrich, roberto tamassia, and michael h. goldwasser."
+        return False
+    if re.match(r'^[a-z\s,]+,\sand\s[a-z\s,]+,\s[a-z\s,]+,\s[a-z\s,]+,\s[a-z\s,]+$', sentence):  # Filter out sentences like "michael a. goodrich, roberto tamassia, and michael h. goldwasser."
+        return False
+    if re.match(r'^[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+,\s[a-z\s]+$', sentence):  # Filter out sentences with very long lists of authors
+        return False
+    if re.match(r'^[a-zA-Z\s]+,\s[a-z\s]+,\s[a-z\s]+,\sand\s[a-z\s]+$', sentence):  # Filter out sentences like "12.2 examples of program evaluation prediction."
+        return False
+    if re.match(r'^input:\s.*$', sentence):  # Filter out sentences starting with "input: "
+        return False
+    if re.search(r'\bprint\((.*)\)\b', sentence):  # Filter out sentences containing print statements
+        return False
+    if re.match(r'.*\|-\s*\(.*\)$', sentence):  # Filter out sentences with |- symbol
+        return False
+    if re.match(r'.*\bph\b.*\b(ps|ch)\b', sentence):  # Filter out sentences with logical notation
+        return False
+    if re.match(r'.*\b(nn0|cc|zz)\b.*', sentence):  # Filter out sentences with notation like nn0, cc, zz
+        return False
+    
     return True
 
 def filter_sentences(sentences):
@@ -95,18 +141,21 @@ def load_and_clean_pdfs_parallel(directory):
 
 def save_cleaned_text_to_csv(cleaned_texts, output_file='cleaned_texts.csv'):
     df = pd.DataFrame(cleaned_texts)
-    df.to_csv(output_file, index=False)
+    df.to_csv(output_file, index=False, encoding='utf-8')
 
 def print_stats(cleaned_texts, total_sentences):
     num_sentences = len(cleaned_texts)
     print(f"\nTotal number of sentences processed: {total_sentences}")
     print(f"Number of meaningful sentences exported to CSV: {num_sentences}")
     print(f"Number of sentences filtered out: {total_sentences - num_sentences}")
-    print("Sample of meaningful sentences:")
-    for sample in cleaned_texts[:5]:
-        print(sample)
 
 if __name__ == "__main__":
+    # Download stopwords and punkt if not already available
+    download('stopwords')
+    download('punkt')
+
+    STOPWORDS = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
+    
     directory = 'ref'
     cleaned_texts, total_sentences = load_and_clean_pdfs_parallel(directory)
     save_cleaned_text_to_csv(cleaned_texts)
