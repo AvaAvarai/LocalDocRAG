@@ -1,6 +1,6 @@
 # EmbedQA
 
-EmbedQA is a semantic embedding-based question-answering system that processes PDFs to generate embeddings for sentences, enabling semantic search and question answering using these embeddings. The system utilizes `sentence-transformers` for generating embeddings and `transformers` for question answering.
+EmbedQA is a semantic embedding-based question-answering system that processes PDFs to generate embeddings for sentences, enabling semantic search and question answering using these embeddings. The system utilizes `sentence-transformers` for generating embeddings and `transformers` for question answering. Currently embeddings are generated with `allenai/scibert_scivocab_uncased`.
 
 ## Overview
 
@@ -18,12 +18,14 @@ Our project has been rebuilt and will be in a WIP (Work In Progress) state for s
 ## Installation
 
 1. **Clone the repository**:
+
     ```sh
     git clone https://github.com/your-username/EmbedQA.git
     cd EmbedQA
     ```
 
 2. **Install the required packages**:
+
     ```sh
     pip install -r requirements.txt
     ```
@@ -34,24 +36,28 @@ Our project has been rebuilt and will be in a WIP (Work In Progress) state for s
 
 1. **Scrape PDF Content**:
     - Run the script to scrape PDF content.
+
     ```sh
     python src/scrape.py
     ```
 
 2. **Clean the Extracted Text**:
     - Run the script to clean the extracted text.
+
     ```sh
     python src/extract_clean_text.py
     ```
 
 3. **Generate Embeddings**:
     - Run the script to generate embeddings for the cleaned text.
+
     ```sh
     python src/create_embeddings.py
     ```
 
 4. **Visualize the Embeddings**:
     - Run the scripts to visualize embeddings using various dimensionality reduction techniques.
+
     ```sh
     python src/visualize_embeddings_in_DR.py  # For dimensionality reduction visualization
     python src/visualize_embeddings_in_PC.py  # For parallel coordinates visualization
@@ -114,9 +120,11 @@ We provide a Dash application for tuning UMAP hyperparameters. This application 
 ## Screenshots
 
 ### UMAP Visualization 1
+
 ![UMAP 1](screenshots/umap1.png)
 
 ### UMAP Visualization 2: Subcluster of Sentences with German Words
+
 ![UMAP 2](screenshots/umap2.png)
 
 ## Dependencies

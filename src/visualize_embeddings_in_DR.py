@@ -9,6 +9,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE, SpectralEmbedding
 import umap.umap_ as umap
 from ast import literal_eval
+from sklearn.preprocessing import StandardScaler
 
 # Load the embeddings data
 def load_embeddings(file_path):
@@ -21,9 +22,14 @@ def prepare_data_for_visualization(df):
     embeddings = pd.DataFrame(df['embedding'].apply(literal_eval).tolist(), index=df.index)
     embeddings.columns = [f'embedding_{i}' for i in range(embeddings.shape[1])]
     
+    # Normalize the embeddings
+    scaler = StandardScaler()
+    embeddings = scaler.fit_transform(embeddings)
+    
     # Combine with the original dataframe
     df = df.drop(columns=['embedding'])
-    df = pd.concat([df, embeddings], axis=1)
+    embeddings_df = pd.DataFrame(embeddings, columns=[f'embedding_{i}' for i in range(embeddings.shape[1])], index=df.index)
+    df = pd.concat([df, embeddings_df], axis=1)
     
     # Convert 'pdf_source' to categorical codes for color mapping
     df['pdf_source_code'] = pd.Categorical(df['pdf_source']).codes
@@ -32,7 +38,6 @@ def prepare_data_for_visualization(df):
 
 # Create 3D plot and save to HTML
 def create_3d_plot(df, reduced_embeddings, title, filename):
-    # Include the sentence in the hover data
     reduced_embeddings = pd.DataFrame(reduced_embeddings, columns=['x', 'y', 'z'])
     reduced_embeddings['sentence'] = df['sentence']
     reduced_embeddings['pdf_source'] = df['pdf_source']
@@ -40,27 +45,27 @@ def create_3d_plot(df, reduced_embeddings, title, filename):
     fig = px.scatter_3d(reduced_embeddings, 
         x='x', y='y', z='z', 
         color='pdf_source',
-        hover_data={'sentence': True},  # Show the sentence on hover
+        hover_data={'sentence': True},
         labels={'color': 'PDF Source'},
         title=title)
 
-    # Add custom JavaScript for copying text to clipboard
+    # Add custom JavaScript for copying sentence to clipboard
     fig_html = fig.to_html(include_plotlyjs='cdn')
     custom_js = """
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const plot = document.querySelector('.plotly-graph-div');
-        plot.on('plotly_click', function(data) {
-            const sentence = data.points[0].customdata[0];
-            navigator.clipboard.writeText(sentence).then(function() {
-                console.log('Text copied to clipboard');
-            }).catch(function(err) {
-                console.error('Could not copy text: ', err);
-            });
-        });
-    });
-    </script>
-    """
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const plot = document.querySelector('.plotly-graph-div');
+                    plot.on('plotly_click', function(data) {
+                        const sentence = data.points[0].customdata[0];
+                        navigator.clipboard.writeText(sentence).then(function() {
+                            console.log('Text copied to clipboard');
+                        }).catch(function(err) {
+                            console.error('Could not copy text: ', err);
+                        });
+                    });
+                });
+                </script>
+                """
     fig_html = fig_html.replace('</body>', custom_js + '</body>')
 
     with open(filename, 'w') as f:
@@ -78,15 +83,15 @@ def apply_dimensionality_reduction_and_plot(prepared_df, embeddings):
     tsne_result = tsne.fit_transform(embeddings)
     create_3d_plot(prepared_df, tsne_result, 't-SNE 3D Plot', 'tsne_3d_plot.html')
     
-    # UMAP
+    # UMAP: Shows the best results for this purpose of semantic sentence clustering
     umap_model = umap.UMAP(n_components=3, metric='cosine')
     umap_result = umap_model.fit_transform(embeddings)
     create_3d_plot(prepared_df, umap_result, 'UMAP 3D Plot', 'umap_3d_plot.html')
-    
-    # # Spectral Embedding
-    # spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
-    # spectral_result = spectral.fit_transform(embeddings)
-    # create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
+
+    # Spectral Embedding
+    spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
+    spectral_result = spectral.fit_transform(embeddings)
+    create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
 
 
 if __name__ == "__main__":
