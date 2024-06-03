@@ -1,6 +1,7 @@
 import requests
 from xml.etree import ElementTree
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 SAVE_DIRECTORY = "ref"
 PLACEHOLDER_FILE = "pdfs_go_here"
@@ -53,13 +54,23 @@ def create_placeholder_file(directory, filename):
         placeholder_file.write("")
     print(f"Created placeholder file: {placeholder_path}")
 
+def fetch_and_download_papers(author, author_dir, start_index, max_results):
+    xml_data = fetch_papers_by_author(author, start_index=start_index, max_results=max_results)
+    paper_urls = parse_paper_urls(xml_data)
+    if not paper_urls:
+        return False
+    last_name = author.split()[-1]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for url in paper_urls:
+            executor.submit(download_pdf, url, author_dir, last_name)
+    return True
+
 def scrape_arxiv_papers(authors):
     if not os.path.exists(SAVE_DIRECTORY):
         os.makedirs(SAVE_DIRECTORY)
         create_placeholder_file(SAVE_DIRECTORY, PLACEHOLDER_FILE)
 
     for author in authors:
-        last_name = author.split()[-1]
         author_dir = os.path.join(SAVE_DIRECTORY, author.replace(' ', '_'))
         if not os.path.exists(author_dir):
             os.makedirs(author_dir)
@@ -67,12 +78,9 @@ def scrape_arxiv_papers(authors):
         start_index = 0
         max_results = 50
         while True:
-            xml_data = fetch_papers_by_author(author, start_index=start_index, max_results=max_results)
-            paper_urls = parse_paper_urls(xml_data)
-            if not paper_urls:
+            more_papers = fetch_and_download_papers(author, author_dir, start_index, max_results)
+            if not more_papers:
                 break
-            for url in paper_urls:
-                download_pdf(url, author_dir, last_name)
             start_index += max_results
 
 if __name__ == "__main__":

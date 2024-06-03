@@ -6,8 +6,9 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk import download
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Download stopwords if not already available
+# Download stopwords and punkt if not already available
 download('stopwords')
 download('punkt')
 
@@ -64,20 +65,32 @@ def filter_sentences(sentences):
             filtered_sentences.append(sentence)
     return filtered_sentences
 
-def load_and_clean_pdfs(directory):
-    pdf_texts = []
-    total_sentences = 0
+def process_pdf(file_info):
+    author, file_path = file_info
+    text = extract_text_from_pdf(file_path)
+    cleaned_sentences = clean_text(text)
+    filtered_sentences = filter_sentences(cleaned_sentences)
+    pdf_texts = [{'author': author, 'pdf_source': os.path.basename(file_path), 'sentence': sentence} for sentence in filtered_sentences]
+    return pdf_texts, len(cleaned_sentences)
+
+def load_and_clean_pdfs_parallel(directory):
+    pdf_files = []
     for subdir, _, files in os.walk(directory):
         author = os.path.basename(subdir)
         for file in files:
             if file.endswith(".pdf"):
-                path = os.path.join(subdir, file)
-                text = extract_text_from_pdf(path)
-                cleaned_sentences = clean_text(text)
-                total_sentences += len(cleaned_sentences)
-                filtered_sentences = filter_sentences(cleaned_sentences)
-                for sentence in filtered_sentences:
-                    pdf_texts.append({'author': author, 'pdf_source': file, 'sentence': sentence})
+                pdf_files.append((author, os.path.join(subdir, file)))
+
+    total_sentences = 0
+    pdf_texts = []
+
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(process_pdf, file_info) for file_info in pdf_files]
+        for future in as_completed(futures):
+            result, num_sentences = future.result()
+            pdf_texts.extend(result)
+            total_sentences += num_sentences
+
     return pdf_texts, total_sentences
 
 def save_cleaned_text_to_csv(cleaned_texts, output_file='cleaned_texts.csv'):
@@ -95,6 +108,6 @@ def print_stats(cleaned_texts, total_sentences):
 
 if __name__ == "__main__":
     directory = 'ref'
-    cleaned_texts, total_sentences = load_and_clean_pdfs(directory)
+    cleaned_texts, total_sentences = load_and_clean_pdfs_parallel(directory)
     save_cleaned_text_to_csv(cleaned_texts)
     print_stats(cleaned_texts, total_sentences)
