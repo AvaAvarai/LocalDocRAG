@@ -17,7 +17,7 @@ patterns = [
     re.compile(r'\b(?:figure|table|definition|appendix|advances|ultra-strong|manuscript submitted|url|available at|alternatively|abstract|institute (for|of)|we.*\backnowledge\b|\bwe.*\backnowledgments\b|contribution|contributions|funding|grant|grants|resources provided by|bits per byte|pp\.)\b'),
     re.compile(r'^\[\d+\]\s|^[a-z]\.?\s|^\[?\d+\]?\.$|^input:\s|.*\|-\s*\(.*\)$|.*\bph\b.*\b(ps|ch)\b|.*\b(nn0|cc|zz)\b.*|.*\b(?:[online]|acm sigkdd int|[a-z]\d+)\b.*|.*\[online\].*'),
     re.compile(r'\b(?:[12]\d{3}|vol\.|no\.|doi:|ed\.|pages|chapter|cambridge university press|journal|conference|proceedings|in press|forthcoming|ISBN\s(?:97[89][-– ])?\d{1,5}[-– ]?\d+[-– ]?\d+[-– ]?[\dX])\b'),
-    re.compile(r'https?://\S+|www\.\S+|http\s?:\s?//\S+'),
+    re.compile(r'https?://\S+|\bwww\.\S+\b|http\s?:\s?//\S+'),
     re.compile(r'\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b'),
     re.compile(r'\bin fig\b|\bin table\b|\bin diagram\b|\bin screenshot\b|\bprint\((.*)\)\b'),
     re.compile(r'^(\d+\s?[,|\.|\s])+[a-z]*\d*$'),
@@ -36,7 +36,10 @@ patterns = [
     re.compile(r'\bgithub\b'),
     re.compile(r'^code available at:\s?\S+$'),
     re.compile(r'^\d+\s+[a-z\s-]+(\.\s*\.)+$'),
-    re.compile(r'^\d+\s+[a-zA-Z\s-]+\s*\.\s*\.\s*\.\s*$')
+    re.compile(r'^\d+\s+[a-zA-Z\s-]+\s*\.\s*\.\s*\.\s*$'),
+    re.compile(r'\bavailable online\b'),
+    re.compile(r'\bhas been accepted\b'),
+    re.compile(r'\bauthorized administrator\b'),
 ]
 
 def extract_text_from_pdf(pdf_path):
@@ -53,12 +56,14 @@ def extract_text_from_pdf(pdf_path):
 def clean_text(text):
     text = re.sub(r'-\s*\n', '', text)         # Remove hyphens at line breaks and join the words
     text = text.replace('\n', ' ')             # Replace newlines with spaces
+    text = text.replace(':', ' ')              # Replace colons with spaces
     text = re.sub(r'\b"\s', '" ', text)        # Remove misplaced space after an opening quote
     text = re.sub(r'\s"\b', ' "', text)        # Remove misplaced space before a closing quote
     text = text.lower()                        # Convert text to lowercase
     text = re.sub(r'\s+', ' ', text)           # Replace multiple whitespace characters with a single space
     text = re.sub(r',,', ',', text)            # Replace double commas with a single comma
     text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-UTF-8 characters
+    text = re.sub(r'\.{2,}', '.', text)        # Replace sequences of periods with a single period
 
     # Separate sentences with spaces after periods and remove extra spaces
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
@@ -67,7 +72,7 @@ def clean_text(text):
     return sentences
 
 def is_meaningful_sentence(sentence):
-    if len(sentence) < 20:
+    if len(sentence) < 20:  # Filter out very short sentences (less than 20 characters)
         return False
     for pattern in patterns:
         if pattern.search(sentence):
