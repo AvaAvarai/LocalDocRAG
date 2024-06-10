@@ -4,3 +4,4 @@ ref/*/
 *.html
 *.onnx
 *.xlsx
+venv39/
