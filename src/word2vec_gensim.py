@@ -5,6 +5,7 @@ from tqdm import tqdm
 import concurrent.futures
 import numpy as np
 import json
+import os
 
 def sentence_vector(sentence, model):
     words = simple_preprocess(sentence)
@@ -23,14 +24,14 @@ def main():
     sentences = [simple_preprocess(sentence) for sentence in df['sentence']]
 
     # Train Word2Vec model
-    model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=4)
+    model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=os.cpu_count())
 
     # Serialize the model for use in the worker processes
     model.save("word2vec.model")
     model = Word2Vec.load("word2vec.model")
 
     # Setting up parallel processing
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         # Map process_row function to each row in the DataFrame
         # Pass the model as a constant argument
         futures = [executor.submit(process_row, row, model) for row in df.to_dict('records')]

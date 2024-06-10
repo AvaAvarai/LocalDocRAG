@@ -6,3 +6,4 @@ ref/*/
 *.xlsx
 venv39/
 *.model
+*.pyc
