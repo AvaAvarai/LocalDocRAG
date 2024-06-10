@@ -1,7 +1,13 @@
+import warnings
+
+# Suppress specific FutureWarnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
+
 import os
 
-# Set environment variable
+# Set environment variables to suppress TensorFlow warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import pandas as pd
 import plotly.express as px
@@ -78,8 +84,8 @@ def apply_dimensionality_reduction_and_plot(prepared_df, embeddings):
     pca_result = pca.fit_transform(embeddings)
     create_3d_plot(prepared_df, pca_result, 'PCA 3D Plot', 'pca_3d_plot.html')
     
-    # t-SNE
-    tsne = TSNE(n_components=3, perplexity=30, n_iter=1000, metric='cosine', init='pca')
+    # t-SNE with explicitly set parameters
+    tsne = TSNE(n_components=3, perplexity=30, n_iter=1000, metric='cosine', init='pca', learning_rate=200.0)
     tsne_result = tsne.fit_transform(embeddings)
     create_3d_plot(prepared_df, tsne_result, 't-SNE 3D Plot', 'tsne_3d_plot.html')
     
@@ -88,15 +94,15 @@ def apply_dimensionality_reduction_and_plot(prepared_df, embeddings):
     umap_result = umap_model.fit_transform(embeddings)
     create_3d_plot(prepared_df, umap_result, 'UMAP 3D Plot', 'umap_3d_plot.html')
 
-    # Spectral Embedding
-    spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
-    spectral_result = spectral.fit_transform(embeddings)
-    create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
+    # Not enough memory for Spectral Embedding
+    # spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')
+    # spectral_result = spectral.fit_transform(embeddings)
+    # create_3d_plot(prepared_df, spectral_result, 'Spectral Embedding 3D Plot', 'spectral_embedding_3d_plot.html')
 
 
 if __name__ == "__main__":
     # Load the embeddings CSV
-    embeddings_df = load_embeddings('embeddings.csv')
+    embeddings_df = load_embeddings('embeddings_word2vec.csv')
     
     # Prepare the data for visualization
     prepared_df, embeddings = prepare_data_for_visualization(embeddings_df)

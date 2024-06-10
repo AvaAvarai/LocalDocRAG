@@ -51,7 +51,7 @@ def create_parallel_coordinates_plot(df, color_mapping):
 
 if __name__ == "__main__":
     # Load the embeddings CSV
-    embeddings_df = load_embeddings('embeddings.csv')
+    embeddings_df = load_embeddings('embeddings_word2vec.csv')
     
     # Prepare the data for visualization
     prepared_df = prepare_data_for_visualization(embeddings_df)

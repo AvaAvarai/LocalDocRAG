@@ -2,14 +2,15 @@ import pandas as pd
 from gensim.models import Word2Vec
 from gensim.utils import simple_preprocess
 from tqdm import tqdm
-import numpy as np
 import concurrent.futures
+import numpy as np
+import json
 
 def sentence_vector(sentence, model):
     words = simple_preprocess(sentence)
     if not words:
-        return np.zeros(model.vector_size)  # Return a zero vector if no words are found
-    return sum(model.wv[word] for word in words if word in model.wv) / len([word for word in words if word in model.wv])
+        return np.zeros(model.vector_size).tolist()  # Return a zero vector if no words are found
+    return np.mean([model.wv[word] for word in words if word in model.wv], axis=0).tolist()
 
 def process_row(row, model):
     return sentence_vector(row['sentence'], model)
@@ -24,15 +25,20 @@ def main():
     # Train Word2Vec model
     model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=4)
 
+    # Serialize the model for use in the worker processes
+    model.save("word2vec.model")
+    model = Word2Vec.load("word2vec.model")
+
     # Setting up parallel processing
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # Map process_row function to each row in the DataFrame
-        # Use tqdm to show the progress bar
-        # Pass model as a part of the function to avoid pickling the whole model
-        results = list(tqdm(executor.map(process_row, df.to_dict('records'), [model]*len(df)), total=len(df)))
+        # Pass the model as a constant argument
+        futures = [executor.submit(process_row, row, model) for row in df.to_dict('records')]
+        results = list(tqdm(concurrent.futures.as_completed(futures), total=len(futures)))
+        results = [future.result() for future in results]
 
     # Assign results back to the DataFrame
-    df['embedding'] = results
+    df['embedding'] = [json.dumps(embedding) for embedding in results]
 
     # Save embeddings to a new CSV file
     df.to_csv('embeddings_word2vec.csv', index=False)

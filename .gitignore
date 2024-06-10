@@ -5,3 +5,4 @@ ref/*/
 *.onnx
 *.xlsx
 venv39/
+*.model
