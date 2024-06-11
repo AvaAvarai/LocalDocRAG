@@ -4,7 +4,7 @@ from PyPDF2 import PdfReader
 import pandas as pd
 import time
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForQuestionAnswering, pipeline
+from transformers import AutoTokenizer, AutoModelForQuestionAnswering, pipeline, AutoModelForSeq2SeqLM
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import string
@@ -18,6 +18,14 @@ def clean_sentence(sentence, seen_sentences):
         seen_sentences.add(sentence)
         return sentence
     return None
+
+# Function to remove unwanted references from text
+def remove_references(text):
+    # Remove patterns like "Fig. 1", "Table 2", "[3]", "(3)", etc.
+    text = re.sub(r'\b(Fig|Table|Fig\.|Table\.|Figure)\s?\d+\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[\d+\]', '', text)
+    text = re.sub(r'\(\d+\)', '', text)
+    return text.strip()
 
 # Function to extract sentences from a PDF file
 def extract_sentences_from_pdf(file_path):
@@ -142,6 +150,11 @@ tokenizer = AutoTokenizer.from_pretrained("bert-large-uncased-whole-word-masking
 model = AutoModelForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
 qa_pipeline = pipeline('question-answering', model=model, tokenizer=tokenizer)
 
+# Initialize the summarization model and tokenizer
+summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
+summarizer_tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
+summarizer = pipeline('summarization', model=summarizer_model, tokenizer=summarizer_tokenizer)
+
 # List of example queries for testing
 queries = [
     "What is the purpose of Visual Knowledge Discovery?",
@@ -173,8 +186,12 @@ for query in queries:
         final_answer_parts.append(f"{answer['answer']} [{i+1}]")
         citations.append(f"[{i+1}] {result['document']}")
 
-    # Combine the answers and citations into the final text
-    final_answer_text = f"Query: {query}\nAnswer: {' '.join(final_answer_parts)}\n\n" + '\n'.join(citations)
+    # Combine the answers into a single paragraph using the summarization model
+    combined_context = " ".join([remove_references(result['sentence']) for result in all_results[:5]])
+    summary = summarizer(combined_context, max_length=150, min_length=30, do_sample=False)[0]['summary_text']
+
+    # Combine the answers, summary, and citations into the final text
+    final_answer_text = f"Query: {query}\nAnswer: {summary}\n\nContext: " + " ".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
 
     # Save the final answer with citations to a text file
     final_answer_filename = f'final_answer_{queries.index(query) + 1}.txt'
