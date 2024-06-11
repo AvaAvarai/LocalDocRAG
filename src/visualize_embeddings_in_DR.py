@@ -82,17 +82,17 @@ def apply_dimensionality_reduction_and_plot(prepared_df, embeddings):
     # PCA
     pca = PCA(n_components=3)
     pca_result = pca.fit_transform(embeddings)
-    create_3d_plot(prepared_df, pca_result, 'PCA 3D Plot', 'pca_3d_plot.html')
+    create_3d_plot(prepared_df, pca_result, 'PCA 3D Plot', 'pca_3d_plot_word2vec.html')
     
     # t-SNE with explicitly set parameters
     tsne = TSNE(n_components=3, perplexity=30, n_iter=1000, metric='cosine', init='pca', learning_rate=200.0)
     tsne_result = tsne.fit_transform(embeddings)
-    create_3d_plot(prepared_df, tsne_result, 't-SNE 3D Plot', 'tsne_3d_plot.html')
+    create_3d_plot(prepared_df, tsne_result, 't-SNE 3D Plot', 'tsne_3d_plot_word2vec.html')
     
     # UMAP: Shows the best results for this purpose of semantic sentence clustering
     umap_model = umap.UMAP(n_components=3, metric='cosine')
     umap_result = umap_model.fit_transform(embeddings)
-    create_3d_plot(prepared_df, umap_result, 'UMAP 3D Plot', 'umap_3d_plot.html')
+    create_3d_plot(prepared_df, umap_result, 'UMAP 3D Plot', 'umap_3d_plot_word2vec.html')
 
     # Not enough memory for Spectral Embedding
     # spectral = SpectralEmbedding(n_components=3, affinity='nearest_neighbors')

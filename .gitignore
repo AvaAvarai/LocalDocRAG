@@ -7,3 +7,5 @@ ref/*/
 venv39/
 *.model
 *.pyc
+output/*/
+*.msi

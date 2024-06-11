@@ -47,17 +47,33 @@ def create_parallel_coordinates_plot(df, color_mapping):
             name=source
         ))
 
+    fig.update_layout(
+        title='Parallel Coordinates Plot of Embeddings',
+        plot_bgcolor='white'
+    )
     fig.show()
 
 if __name__ == "__main__":
     # Load the embeddings CSV
     embeddings_df = load_embeddings('embeddings_word2vec.csv')
     
+    # Debug: Check the loaded data
+    print("Loaded Embeddings DataFrame:")
+    print(embeddings_df.head())
+
     # Prepare the data for visualization
     prepared_df = prepare_data_for_visualization(embeddings_df)
     
+    # Debug: Check the prepared data
+    print("Prepared DataFrame:")
+    print(prepared_df.head())
+
     # Assign colors to sources
     prepared_df, color_mapping = assign_colors_to_sources(prepared_df)
+    
+    # Debug: Check the color mapping
+    print("Color Mapping:")
+    print(color_mapping)
     
     # Create the Parallel Coordinates plot
     create_parallel_coordinates_plot(prepared_df, color_mapping)

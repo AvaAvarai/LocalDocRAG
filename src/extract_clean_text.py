@@ -3,7 +3,7 @@ import os
 import re
 import pandas as pd
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk import download
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
@@ -24,27 +24,22 @@ def extract_text_from_pdf(pdf_path):
         return ""
     
 def clean_text(text):
-    text = re.sub(r'-\s*\n', '', text)         # Remove hyphens at line breaks and join the words
-    text = text.replace('\n', ' ')             # Replace newlines with spaces
-    text = text.replace(':', ' ')              # Replace colons with spaces
-    text = re.sub(r'\b"\s', '"', text)         # Remove misplaced space after an opening quote
-    text = re.sub(r'\s"\b', '"', text)         # Remove misplaced space before a closing quote
-    text = re.sub(r'"\s', '"', text)           # Remove space after opening quote
-    text = re.sub(r'\s"', '"', text)           # Remove space before closing quote
-    text = re.sub(r'“\s', '“', text)           # Handle different quote marks
-    text = re.sub(r'\s”', '”', text)           # Handle different quote marks
-    text = re.sub(r'\d+\s*\|\s*\d+', '', text) # Remove page numbers (e.g., "1 | 2")
-    text = text.lower()                        # Convert text to lowercase
-    text = re.sub(r'\s+', ' ', text)           # Replace multiple whitespace characters with a single space
-    text = re.sub(r',,', ',', text)            # Replace double commas with a single comma
-    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-UTF-8 characters
-    text = re.sub(r'\.{2,}', '.', text)        # Replace sequences of periods with a single period
+    # Normalize text
+    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-ASCII
+    text = re.sub(r'\s+', ' ', text.strip())  # Normalize spaces
 
-    # Separate sentences with spaces after periods and remove extra spaces
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    sentences = [sentence.strip() for sentence in sentences if sentence]
-
-    return sentences
+    # Use nltk to split into sentences
+    sentences = sent_tokenize(text)
+    
+    # Clean and filter sentences
+    cleaned_sentences = []
+    for sentence in sentences:
+        words = word_tokenize(sentence.lower())
+        words = [word for word in words if word.isalpha() and word not in STOPWORDS]  # Filter
+        if len(words) >= 5:
+            cleaned_sentences.append(" ".join(words))
+    
+    return cleaned_sentences
 
 def process_pdf(file_info):
     author, file_path = file_info
