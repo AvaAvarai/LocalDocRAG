@@ -9,3 +9,4 @@ venv39/
 *.pyc
 output/*/
 *.msi
+*.txt

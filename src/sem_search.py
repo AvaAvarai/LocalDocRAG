@@ -1,36 +1,34 @@
 import os
 import re
-from pdf2docx import Converter
-import docx
+from PyPDF2 import PdfReader
 import pandas as pd
 import time
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModelForQuestionAnswering, pipeline
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
+import string
 
-# Convert PDF to Word Document using pdf2docx
-def convert_pdf_to_docx(pdf_file, docx_file):
-    cv = Converter(pdf_file)
-    cv.convert(docx_file)
-    cv.close()
-
-# Convert Word Document to Text
-def convert_docx_to_txt(docx_file, txt_file):
-    doc = docx.Document(docx_file)
-    with open(txt_file, 'w', encoding='utf-8') as f:
-        for para in doc.paragraphs:
-            f.write(para.text + '\n')
-
-# Function to clean up redundant spacing
-def clean_sentence(sentence):
+# Function to clean up redundant spacing, remove newlines and tabs, and remove punctuation
+def clean_sentence(sentence, seen_sentences):
+    sentence = sentence.encode('utf-8', 'ignore').decode('utf-8')
     sentence = sentence.replace('\n', ' ').replace('\t', ' ')
-    return re.sub(r'\s+', ' ', sentence).strip()
+    sentence = re.sub(r'\s+', ' ', sentence).strip()
+    if sentence not in seen_sentences:
+        seen_sentences.add(sentence)
+        return sentence
+    return None
 
-# Function to extract sentences from a text file
-def extract_sentences_from_txt(file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
-        text = f.read()
-    sentences = [clean_sentence(sentence) for sentence in text.split('. ') if clean_sentence(sentence)]
+# Function to extract sentences from a PDF file
+def extract_sentences_from_pdf(file_path):
+    reader = PdfReader(file_path)
+    sentences = []
+    seen_sentences = set()
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            cleaned_sentences = [clean_sentence(sentence, seen_sentences) for sentence in text.split('. ')]
+            sentences.extend([sentence for sentence in cleaned_sentences if sentence])
     return sentences
 
 # Function to find all PDF files in a directory and its subdirectories
@@ -48,26 +46,30 @@ def find_relevant_sentences(query, model, embeddings, top_n=5):
     nbrs = NearestNeighbors(n_neighbors=min(top_n, len(embeddings)), metric='cosine').fit(embeddings)
     distances, indices = nbrs.kneighbors(query_embedding, n_neighbors=min(top_n, len(embeddings)))
     results = []
+    added_sentences = set()
     for idx in indices[0]:
-        results.append({
-            'query': query,
-            'sentence': df.iloc[idx]['sentence'],
-            'document': df.iloc[idx]['document'],
-            'distance': distances[0][indices[0].tolist().index(idx)]
-        })
-    return results
+        sentence = df.iloc[idx]['sentence']
+        if sentence not in added_sentences:
+            added_sentences.add(sentence)
+            results.append({
+                'query': query,
+                'sentence': sentence,
+                'document': df.iloc[idx]['document'],
+                'distance': distances[0][indices[0].tolist().index(idx)]
+            })
+    return sorted(results, key=lambda x: x['distance'], reverse=True)
 
 # Load the pre-trained models with a fixed seed
 models = {
     'SBERT': SentenceTransformer('all-MiniLM-L6-v2'),
-    'SciBERT': SentenceTransformer('allenai/scibert_scivocab_uncased')
+    # 'SciBERT': SentenceTransformer('allenai/scibert_scivocab_uncased')
 }
 np.random.seed(42)
 
 # Directory containing the PDF documents
 pdf_dir = 'ref'
 
-# Output directory for DOCX and TXT files
+# Output directory for processed text files
 output_dir = 'output'
 
 # Ensure the output directory exists
@@ -76,34 +78,37 @@ os.makedirs(output_dir, exist_ok=True)
 # Find all PDF files in the directory and its subdirectories
 pdf_files = find_all_pdfs(pdf_dir)
 
-# Convert PDFs to Word and then to Text
+# Extract text from PDFs and save to text files
 txt_files = []
 for pdf_file in pdf_files:
-    print(f"Converting file: {pdf_file}")
+    print(f"Processing file: {pdf_file}")
     relative_path = os.path.relpath(pdf_file, pdf_dir)
-    docx_file = os.path.join(output_dir, relative_path.replace('.pdf', '.docx'))
     txt_file = os.path.join(output_dir, relative_path.replace('.pdf', '.txt'))
 
     # Ensure the output subdirectory exists
-    os.makedirs(os.path.dirname(docx_file), exist_ok=True)
     os.makedirs(os.path.dirname(txt_file), exist_ok=True)
 
-    convert_pdf_to_docx(pdf_file, docx_file)
-    convert_docx_to_txt(docx_file, txt_file)
-    txt_files.append(txt_file)
+    sentences = extract_sentences_from_pdf(pdf_file)
+    if sentences:
+        with open(txt_file, 'w', encoding='utf-8') as f:
+            for sentence in sentences:
+                f.write(sentence + '\n')
+        txt_files.append(txt_file)
+    else:
+        print(f"No sentences extracted from file: {pdf_file}")
 
 # Load and chunk documents into sentences
 docs_sentences = []
 doc_references = []
 
 for txt_file in txt_files:
-    print(f"Processing file: {txt_file}")
-    sentences = extract_sentences_from_txt(txt_file)
+    with open(txt_file, 'r', encoding='utf-8') as f:
+        sentences = f.readlines()
     if sentences:
         docs_sentences.extend(sentences)
         doc_references.extend([txt_file] * len(sentences))
     else:
-        print(f"No sentences extracted from file: {txt_file}")
+        print(f"No sentences found in file: {txt_file}")
 
 print(f"Total number of sentences: {len(docs_sentences)}")
 
@@ -129,8 +134,13 @@ for model_name, model in models.items():
     embeddings_df['sentence'] = df['sentence']
     embeddings_df['document'] = df['document']
     filename = f'embeddings_{model_name}_{training_time:.2f}s.csv'
-    embeddings_df.to_csv(filename, index=False)
+    embeddings_df.to_csv(filename, index=False, encoding='utf-8')
     print(f"Embeddings for {model_name} saved to '{filename}' with training time {training_time:.2f} seconds.")
+
+# Initialize the BERT question-answering model and tokenizer
+tokenizer = AutoTokenizer.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
+model = AutoModelForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
+qa_pipeline = pipeline('question-answering', model=model, tokenizer=tokenizer)
 
 # List of example queries for testing
 queries = [
@@ -141,7 +151,7 @@ queries = [
     "What are the difficulties with Visual Knowledge Discovery?"
 ]
 
-# Process each query and save results to a CSV file
+# Process each query, compile answers, and save results to a text file
 for query in queries:
     all_results = []
     for model_name, model in models.items():
@@ -151,5 +161,23 @@ for query in queries:
             all_results.append(result)
     results_df = pd.DataFrame(all_results)
     csv_filename = f'query_results_{queries.index(query) + 1}.csv'
-    results_df.to_csv(csv_filename, index=False)
+    results_df.to_csv(csv_filename, index=False, encoding='utf-8')
     print(f"Results for query '{query}' saved to '{csv_filename}'")
+
+    # Generate an answer for each of the top 5 results using the QA model
+    final_answer_parts = []
+    citations = []
+    for i, result in enumerate(all_results[:5]):
+        context = result['sentence']
+        answer = qa_pipeline({'question': query, 'context': context})
+        final_answer_parts.append(f"{answer['answer']} [{i+1}]")
+        citations.append(f"[{i+1}] {result['document']}")
+
+    # Combine the answers and citations into the final text
+    final_answer_text = f"Query: {query}\nAnswer: {' '.join(final_answer_parts)}\n\n" + '\n'.join(citations)
+
+    # Save the final answer with citations to a text file
+    final_answer_filename = f'final_answer_{queries.index(query) + 1}.txt'
+    with open(final_answer_filename, 'w', encoding='utf-8') as f:
+        f.write(final_answer_text)
+    print(f"Final answer for query '{query}' saved to '{final_answer_filename}'")
