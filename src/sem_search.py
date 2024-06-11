@@ -23,9 +23,29 @@ def clean_sentence(sentence, seen_sentences):
 def remove_references(text):
     # Remove patterns like "Fig. 1", "Table 2", "[3]", "(3)", etc.
     text = re.sub(r'\b(Fig|Table|Fig\.|Table\.|Figure)\s?\d+\b', '', text, flags=re.IGNORECASE)
+    # Remove patterns like "Fig.", "Table"
+    text = re.sub(r'\b(Fig|Table|Figure)\b', '', text, flags=re.IGNORECASE)
+    # Remove patterns like "Section" or "Sect." or "Sec." followed by a number
+    text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\s?\d+\b', '', text, flags=re.IGNORECASE)
+    # Remove patterns like "Section" or "Sect." or "Sec."
+    text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\b', '', text, flags=re.IGNORECASE)
+    # remove patterns like "depicted in " or "shown in " or "seen in " or "illustrated in " or "presented in " or "described in " followed by a reference
+    text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\s?\b.*\b', '', text, flags=re.IGNORECASE)
+    # remove patterns like "depicted in " or "shown in " or "seen in " or "illustrated in " or "presented in " or "described in " not followed by a reference
+    text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\b', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\[\d+\]', '', text)
     text = re.sub(r'\(\d+\)', '', text)
-    return text.strip()
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+# Remove sentences which are too short after cleaning and filtering ignoring 1 and 2 letter words
+def filter_too_short(text, min_length=5):
+    words_in_text = text.split(' ')
+    copy = words_in_text.copy()
+    for word in words_in_text:
+        if len(word) <= 2:  # Remove words with 2 or fewer characters
+            copy.remove(word)
+    return len(copy) >= min_length
 
 # Function to extract sentences from a PDF file
 def extract_sentences_from_pdf(file_path):
@@ -36,7 +56,8 @@ def extract_sentences_from_pdf(file_path):
         text = page.extract_text()
         if text:
             cleaned_sentences = [clean_sentence(sentence, seen_sentences) for sentence in text.split('. ')]
-            sentences.extend([sentence for sentence in cleaned_sentences if sentence])
+            cleaned_sentences = [remove_references(sentence) for sentence in cleaned_sentences if sentence]
+            sentences.extend([sentence for sentence in cleaned_sentences if sentence and filter_too_short(sentence)])
     return sentences
 
 # Function to find all PDF files in a directory and its subdirectories
@@ -155,13 +176,19 @@ summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cn
 summarizer_tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
 summarizer = pipeline('summarization', model=summarizer_model, tokenizer=summarizer_tokenizer)
 
-# List of example queries for testing
+# List of queries for testing
 queries = [
     "What is the purpose of Visual Knowledge Discovery?",
     "How are visual machine learning models built?",
     "What are the challenges of implementing AI in high-risk scenarios?",
     "What are Parallel Coordinates used for?",
-    "What are the difficulties with Visual Knowledge Discovery?"
+    "What are the difficulties with Visual Knowledge Discovery?",
+    "What is the VisCanvas software tool used for?",
+    "What is the hyper methodology used in VisCanvas?",
+    "What is the DCVis software?",
+    "How do I use the DCVis software?",
+    "What is a hyperblock?",
+    "Define hyperblock."
 ]
 
 # Process each query, compile answers, and save results to a text file
@@ -187,8 +214,8 @@ for query in queries:
         citations.append(f"[{i+1}] {result['document']}")
 
     # Combine the answers into a single paragraph using the summarization model
-    combined_context = " ".join([remove_references(result['sentence']) for result in all_results[:5]])
-    summary = summarizer(combined_context, max_length=150, min_length=30, do_sample=False)[0]['summary_text']
+    combined_context = " ".join([result['sentence'] for result in all_results[:5]])
+    summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
 
     # Combine the answers, summary, and citations into the final text
     final_answer_text = f"Query: {query}\nAnswer: {summary}\n\nContext: " + " ".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
