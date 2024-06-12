@@ -10,3 +10,4 @@ venv39/
 output/*/
 *.msi
 *.txt
+*.zip

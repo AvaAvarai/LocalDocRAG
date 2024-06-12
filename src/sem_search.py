@@ -32,8 +32,8 @@ def remove_references(text):
     text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\s?\b.*\b', '', text, flags=re.IGNORECASE)
     # remove patterns like "depicted in " or "shown in " or "seen in " or "illustrated in " or "presented in " or "described in " not followed by a reference
     text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\b', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\[\d+\]', '', text)
-    text = re.sub(r'\(\d+\)', '', text)
+    text = re.sub(r'\[\d+\]', '', text)  # Remove patterns like "[3]"
+    text = re.sub(r'\(\d+\)', '', text)  # Remove patterns like "(3)"
     text = text.replace('  ', ' ')
     return text
 
@@ -85,7 +85,7 @@ def find_relevant_sentences(query, model, embeddings, top_n=5):
                 'document': df.iloc[idx]['document'],
                 'distance': distances[0][indices[0].tolist().index(idx)]
             })
-    return sorted(results, key=lambda x: x['distance'], reverse=True)
+    return sorted(results, key=lambda x: x['distance'])
 
 # Load the pre-trained models with a fixed seed
 models = {
@@ -209,7 +209,7 @@ for query in queries:
     for i, result in enumerate(all_results[:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
-        final_answer_parts.append(f"Similar sentence: {result['sentence']} Sub-answer: {answer['answer']} [{i+1}]")
+        final_answer_parts.append(f"Similar sentence: {result['sentence']}Sub-answer: {answer['answer']} [{i+1}]")
         citations.append(f"[{i+1}] {result['document']}")
 
     # Combine the answers into a single paragraph using the summarization model
