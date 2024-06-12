@@ -12,8 +12,7 @@ import string
 # Function to clean up redundant spacing, remove newlines and tabs, and remove punctuation
 def clean_sentence(sentence, seen_sentences):
     sentence = sentence.encode('utf-8', 'ignore').decode('utf-8')
-    sentence = sentence.replace('\n', ' ').replace('\t', ' ')
-    sentence = re.sub(r'\s+', ' ', sentence).strip()
+    sentence = sentence.replace('\n', ' ').replace('\t', ' ').replace('  ', ' ')
     if sentence not in seen_sentences:
         seen_sentences.add(sentence)
         return sentence
@@ -35,7 +34,7 @@ def remove_references(text):
     text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\b', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\[\d+\]', '', text)
     text = re.sub(r'\(\d+\)', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = text.replace('  ', ' ')
     return text
 
 # Remove sentences which are too short after cleaning and filtering ignoring 1 and 2 letter words
@@ -210,7 +209,7 @@ for query in queries:
     for i, result in enumerate(all_results[:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
-        final_answer_parts.append(f"{answer['answer']} [{i+1}]")
+        final_answer_parts.append(f"Similar sentence: {result['sentence']} Sub-answer: {answer['answer']} [{i+1}]")
         citations.append(f"[{i+1}] {result['document']}")
 
     # Combine the answers into a single paragraph using the summarization model
@@ -218,7 +217,7 @@ for query in queries:
     summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
 
     # Combine the answers, summary, and citations into the final text
-    final_answer_text = f"Query: {query}\nAnswer: {summary}\n\nContext: " + " ".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
+    final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
 
     # Save the final answer with citations to a text file
     final_answer_filename = f'final_answer_{queries.index(query) + 1}.txt'
