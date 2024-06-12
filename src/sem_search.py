@@ -206,14 +206,15 @@ for query in queries:
     # Generate an answer for each of the top 5 results using the QA model
     final_answer_parts = []
     citations = []
+    combined_context = ""
     for i, result in enumerate(all_results[:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
         final_answer_parts.append(f"Similar sentence: {result['sentence']}Sub-answer: {answer['answer']} [{i+1}]")
+        combined_context += f"{result['sentence']}Sub-answer: {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
     # Combine the answers into a single paragraph using the summarization model
-    combined_context = " ".join([result['sentence'] for result in all_results[:5]])
     summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
 
     # Combine the answers, summary, and citations into the final text
