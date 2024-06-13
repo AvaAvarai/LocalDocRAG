@@ -175,34 +175,53 @@ summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cn
 summarizer_tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
 summarizer = pipeline('summarization', model=summarizer_model, tokenizer=summarizer_tokenizer)
 
-# Interactive chat-like interface
-while True:
-    query = input("Enter your query (or type 'exit' to quit): ")
-    if query.lower() == 'exit':
-        break
-    
+# List of queries for testing
+queries = [
+    "What is the purpose of Visual Knowledge Discovery?",
+    "How are visual machine learning models built?",
+    "What are the challenges of implementing AI in high-risk scenarios?",
+    "What are Parallel Coordinates used for?",
+    "What are the difficulties with Visual Knowledge Discovery?",
+    "What is the VisCanvas software tool used for?",
+    "What is the hyper methodology used in VisCanvas?",
+    "What is the DCVis software?",
+    "How do I use the DCVis software?",
+    "What is a hyperblock?",
+    "Define hyperblock."
+]
+
+# Process each query, compile answers, and save results to a text file
+for query in queries:
     all_results = []
     for model_name, model in models.items():
         results = find_relevant_sentences(query, model, embeddings[model_name])
         for result in results:
             result['model'] = model_name
             all_results.append(result)
-    
+    results_df = pd.DataFrame(all_results)
+    csv_filename = f'query_results_{queries.index(query) + 1}.csv'
+    results_df.to_csv(csv_filename, index=False, encoding='utf-8')
+    print(f"Results for query '{query}' saved to '{csv_filename}'")
+
+    # Generate an answer for each of the top 5 results using the QA model
     final_answer_parts = []
     citations = []
     combined_context = ""
     for i, result in enumerate(all_results[:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
-        final_answer_parts.append(f"Similar sentence: {result['sentence']} [{i+1}]\nSub-answer: {answer['answer']}")
-        combined_context += f"{result['sentence']} Sub-answer: {answer['answer']} [{i+1}]. "
+        final_answer_parts.append(f"Similar sentence: {result['sentence']}Sub-answer: {answer['answer']} [{i+1}]")
+        combined_context += f"{result['sentence']}Sub-answer: {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
-    # Generate a summary answer using the summarization model
+    # Combine the answers into a single paragraph using the summarization model
     summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
 
     # Combine the answers, summary, and citations into the final text
     final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
-    
-    # Print the final answer
-    print(final_answer_text)
+
+    # Save the final answer with citations to a text file
+    final_answer_filename = f'final_answer_{queries.index(query) + 1}.txt'
+    with open(final_answer_filename, 'w', encoding='utf-8') as f:
+        f.write(final_answer_text)
+    print(f"Final answer for query '{query}' saved to '{final_answer_filename}'")
