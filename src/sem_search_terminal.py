@@ -1,6 +1,7 @@
 import os
 import re
 from PyPDF2 import PdfReader
+import markdown
 import pandas as pd
 import time
 from sentence_transformers import SentenceTransformer
@@ -20,20 +21,14 @@ def clean_sentence(sentence, seen_sentences):
 
 # Function to remove unwanted references from text
 def remove_references(text):
-    # Remove patterns like "Fig. 1", "Table 2", "[3]", "(3)", etc.
     text = re.sub(r'\b(Fig|Table|Fig\.|Table\.|Figure)\s?\d+\b', '', text, flags=re.IGNORECASE)
-    # Remove patterns like "Fig.", "Table"
     text = re.sub(r'\b(Fig|Table|Figure)\b', '', text, flags=re.IGNORECASE)
-    # Remove patterns like "Section" or "Sect." or "Sec." followed by a number
     text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\s?\d+\b', '', text, flags=re.IGNORECASE)
-    # Remove patterns like "Section" or "Sect." or "Sec."
     text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\b', '', text, flags=re.IGNORECASE)
-    # remove patterns like "depicted in " or "shown in " or "seen in " or "illustrated in " or "presented in " or "described in " followed by a reference
     text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\s?\b.*\b', '', text, flags=re.IGNORECASE)
-    # remove patterns like "depicted in " or "shown in " or "seen in " or "illustrated in " or "presented in " or "described in " not followed by a reference
     text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\b', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\[\d+\]', '', text)  # Remove patterns like "[3]"
-    text = re.sub(r'\(\d+\)', '', text)  # Remove patterns like "(3)"
+    text = re.sub(r'\[\d+\]', '', text)
+    text = re.sub(r'\(\d+\)', '', text)
     text = text.replace('  ', ' ')
     return text
 
@@ -42,7 +37,7 @@ def filter_too_short(text, min_length=5):
     words_in_text = text.split(' ')
     copy = words_in_text.copy()
     for word in words_in_text:
-        if len(word) <= 2:  # Remove words with 2 or fewer characters
+        if len(word) <= 2:
             copy.remove(word)
     return len(copy) >= min_length
 
@@ -59,14 +54,25 @@ def extract_sentences_from_pdf(file_path):
             sentences.extend([sentence for sentence in cleaned_sentences if sentence and filter_too_short(sentence)])
     return sentences
 
-# Function to find all PDF files in a directory and its subdirectories
-def find_all_pdfs(directory):
-    pdf_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.pdf'):
-                pdf_files.append(os.path.join(root, file))
-    return pdf_files
+# Function to extract sentences from a Markdown file
+def extract_sentences_from_markdown(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    html = markdown.markdown(text)
+    sentences = re.split(r'\.\s+', html)
+    seen_sentences = set()
+    cleaned_sentences = [clean_sentence(sentence, seen_sentences) for sentence in sentences]
+    cleaned_sentences = [remove_references(sentence) for sentence in cleaned_sentences if sentence]
+    return [sentence for sentence in cleaned_sentences if sentence and filter_too_short(sentence)]
+
+# Function to find all PDF and Markdown files in a directory and its subdirectories
+def find_all_files(directory, extensions=['.pdf', '.md']):
+    files = []
+    for root, _, files_in_dir in os.walk(directory):
+        for file in files_in_dir:
+            if any(file.endswith(ext) for ext in extensions):
+                files.append(os.path.join(root, file))
+    return files
 
 # Function to find the most relevant sentences for a query using a specific model
 def find_relevant_sentences(query, model, embeddings, top_n=5):
@@ -94,8 +100,8 @@ models = {
 }
 np.random.seed(42)
 
-# Directory containing the PDF documents
-pdf_dir = 'ref'
+# Directory containing the PDF and Markdown documents
+doc_dir = 'ref'
 
 # Output directory for processed text files
 output_dir = 'output'
@@ -103,27 +109,33 @@ output_dir = 'output'
 # Ensure the output directory exists
 os.makedirs(output_dir, exist_ok=True)
 
-# Find all PDF files in the directory and its subdirectories
-pdf_files = find_all_pdfs(pdf_dir)
+# Find all PDF and Markdown files in the directory and its subdirectories
+doc_files = find_all_files(doc_dir)
 
-# Extract text from PDFs and save to text files
+# Extract text from documents and save to text files
 txt_files = []
-for pdf_file in pdf_files:
-    print(f"Processing file: {pdf_file}")
-    relative_path = os.path.relpath(pdf_file, pdf_dir)
-    txt_file = os.path.join(output_dir, relative_path.replace('.pdf', '.txt'))
+for doc_file in doc_files:
+    print(f"Processing file: {doc_file}")
+    relative_path = os.path.relpath(doc_file, doc_dir)
+    txt_file = os.path.join(output_dir, relative_path.rsplit('.', 1)[0] + '.txt')
 
     # Ensure the output subdirectory exists
     os.makedirs(os.path.dirname(txt_file), exist_ok=True)
 
-    sentences = extract_sentences_from_pdf(pdf_file)
+    if doc_file.endswith('.pdf'):
+        sentences = extract_sentences_from_pdf(doc_file)
+    elif doc_file.endswith('.md'):
+        sentences = extract_sentences_from_markdown(doc_file)
+    else:
+        continue
+
     if sentences:
         with open(txt_file, 'w', encoding='utf-8') as f:
             for sentence in sentences:
                 f.write(sentence + '\n')
         txt_files.append(txt_file)
     else:
-        print(f"No sentences extracted from file: {pdf_file}")
+        print(f"No sentences extracted from file: {doc_file}")
 
 # Load and chunk documents into sentences
 docs_sentences = []
