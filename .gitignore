@@ -4,7 +4,7 @@ ref/*/
 *.html
 *.onnx
 *.xlsx
-venv39/
+venv*/
 *.model
 *.pyc
 output/*/

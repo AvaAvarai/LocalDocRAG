@@ -85,11 +85,13 @@ def find_relevant_sentences(query, model, embeddings, top_n=5):
         sentence = df.iloc[idx]['sentence']
         if sentence not in added_sentences:
             added_sentences.add(sentence)
+            similarity_score = 1 - distances[0][indices[0].tolist().index(idx)]
             results.append({
                 'query': query,
                 'sentence': sentence,
                 'document': df.iloc[idx]['document'],
-                'distance': distances[0][indices[0].tolist().index(idx)]
+                'distance': distances[0][indices[0].tolist().index(idx)],
+                'similarity_score': similarity_score
             })
     return sorted(results, key=lambda x: x['distance'])
 
@@ -174,7 +176,7 @@ for model_name, model in models.items():
     embeddings_df['sentence'] = df['sentence']
     embeddings_df['document'] = df['document']
     filename = f'embeddings_{model_name}_{training_time:.2f}s.csv'
-    embeddings_df.to_csv(filename, index=False, encoding='utf-8')
+    embeddings_df.to_csv(filename, index=False, encoding='utf-8', escapechar='\\')
     print(f"Embeddings for {model_name} saved to '{filename}' with training time {training_time:.2f} seconds.")
 
 # Initialize the BERT question-answering model and tokenizer
@@ -192,21 +194,22 @@ while True:
     query = input("Enter your query (or type 'exit' to quit): ")
     if query.lower() == 'exit':
         break
-    
+
+    threshold = 0.75  # Similarity score threshold
     all_results = []
     for model_name, model in models.items():
         results = find_relevant_sentences(query, model, embeddings[model_name])
         for result in results:
             result['model'] = model_name
             all_results.append(result)
-    
+
     final_answer_parts = []
     citations = []
     combined_context = ""
-    for i, result in enumerate(all_results[:5]):
+    for i, result in enumerate([r for r in all_results if r['similarity_score'] >= threshold][:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
-        final_answer_parts.append(f"Similar sentence: {result['sentence']} [{i+1}]\nSub-answer: {answer['answer']}")
+        final_answer_parts.append(f"Similar sentence: {result['sentence']} [{i+1}]\nSub-answer: {answer['answer']}\nSimilarity score: {result['similarity_score']:.2f}")
         combined_context += f"{result['sentence']} Sub-answer: {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
@@ -215,6 +218,6 @@ while True:
 
     # Combine the answers, summary, and citations into the final text
     final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
-    
+
     # Print the final answer
     print(final_answer_text)
