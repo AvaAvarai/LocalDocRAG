@@ -8,7 +8,6 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForQuestionAnswering, pipeline, AutoModelForSeq2SeqLM
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
-import string
 
 # Function to clean up redundant spacing, remove newlines and tabs, and remove punctuation
 def clean_sentence(sentence, seen_sentences):
@@ -195,7 +194,7 @@ while True:
     if query.lower() == 'exit':
         break
 
-    threshold = 0.75  # Similarity score threshold
+    threshold = 0.5  # Similarity score threshold
     all_results = []
     for model_name, model in models.items():
         results = find_relevant_sentences(query, model, embeddings[model_name])
@@ -213,11 +212,14 @@ while True:
         combined_context += f"{result['sentence']} Sub-answer: {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
-    # Generate a summary answer using the summarization model
-    summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
+    if combined_context == "":
+        final_answer_text = "No answer available."
+    else:
+        # Generate a summary answer using the summarization model
+        summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
 
-    # Combine the answers, summary, and citations into the final text
-    final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
+        # Combine the answers, summary, and citations into the final text
+        final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
 
     # Print the final answer
     print(final_answer_text)
