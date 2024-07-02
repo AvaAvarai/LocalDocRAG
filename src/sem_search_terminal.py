@@ -206,7 +206,7 @@ while True:
     if query.lower() == 'exit':
         break
 
-    threshold = 0.5  # Similarity score threshold
+    threshold = 0.65  # Similarity score threshold
     results = find_relevant_sentences(query, model, embeddings)
 
     final_answer_parts = []
@@ -216,7 +216,7 @@ while True:
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
         final_answer_parts.append(f"Context: {result['sentence']} [{i+1}]\nAnswer: {answer['answer']}\nSimilarity score: {result['similarity_score']:.2f}")
-        combined_context += f"Since {result['sentence']}, {answer['answer']} [{i+1}]. "
+        combined_context += f"context {result['sentence']}, answer {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
     if combined_context == "":
@@ -234,7 +234,7 @@ while True:
         summary = summarizer(combined_context, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text']
 
         # Combine the answers, summary, and citations into the final text
-        final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
+        final_answer_text = f"Query: {query}\n\nFinal answer: {summary}\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
 
     # Print the final answer
     print(final_answer_text)
