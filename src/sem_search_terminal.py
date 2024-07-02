@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForQuestionAnswering, pipeline, AutoModelForSeq2SeqLM
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
+from docx import Document
 
 # Function to clean up redundant spacing, remove newlines and tabs, and remove punctuation
 def clean_sentence(sentence, seen_sentences):
@@ -64,8 +65,21 @@ def extract_sentences_from_markdown(file_path):
     cleaned_sentences = [remove_references(sentence) for sentence in cleaned_sentences if sentence]
     return [sentence for sentence in cleaned_sentences if sentence and filter_too_short(sentence)]
 
-# Function to find all PDF and Markdown files in a directory and its subdirectories
-def find_all_files(directory, extensions=['.pdf', '.md']):
+# Function to extract sentences from a DOCX file
+def extract_sentences_from_docx(file_path):
+    doc = Document(file_path)
+    sentences = []
+    seen_sentences = set()
+    for para in doc.paragraphs:
+        text = para.text
+        if text:
+            cleaned_sentences = [clean_sentence(sentence, seen_sentences) for sentence in text.split('. ')]
+            cleaned_sentences = [remove_references(sentence) for sentence in cleaned_sentences if sentence]
+            sentences.extend([sentence for sentence in cleaned_sentences if sentence and filter_too_short(sentence)])
+    return sentences
+
+# Function to find all PDF, Markdown, and DOCX files in a directory and its subdirectories
+def find_all_files(directory, extensions=['.pdf', '.md', '.docx']):
     files = []
     for root, _, files_in_dir in os.walk(directory):
         for file in files_in_dir:
@@ -94,14 +108,12 @@ def find_relevant_sentences(query, model, embeddings, top_n=5):
             })
     return sorted(results, key=lambda x: x['distance'])
 
-# Load the pre-trained models with a fixed seed
-models = {
-    'SBERT': SentenceTransformer('all-MiniLM-L6-v2'),
-    # 'SciBERT': SentenceTransformer('allenai/scibert_scivocab_uncased')
-}
+# Load the pre-trained model
+model_name = 'all-MiniLM-L6-v2'
+model = SentenceTransformer(model_name)
 np.random.seed(42)
 
-# Directory containing the PDF and Markdown documents
+# Directory containing the PDF, Markdown, and DOCX documents
 doc_dir = 'ref'
 
 # Output directory for processed text files
@@ -110,7 +122,7 @@ output_dir = 'output'
 # Ensure the output directory exists
 os.makedirs(output_dir, exist_ok=True)
 
-# Find all PDF and Markdown files in the directory and its subdirectories
+# Find all PDF, Markdown, and DOCX files in the directory and its subdirectories
 doc_files = find_all_files(doc_dir)
 
 # Extract text from documents and save to text files
@@ -127,6 +139,8 @@ for doc_file in doc_files:
         sentences = extract_sentences_from_pdf(doc_file)
     elif doc_file.endswith('.md'):
         sentences = extract_sentences_from_markdown(doc_file)
+    elif doc_file.endswith('.docx'):
+        sentences = extract_sentences_from_docx(doc_file)
     else:
         continue
 
@@ -160,28 +174,26 @@ if len(docs_sentences) == 0:
 # Create a DataFrame for easy handling
 df = pd.DataFrame({'sentence': docs_sentences, 'document': doc_references})
 
-# Generate embeddings for all sentences using all models
-embeddings = {}
-for model_name, model in models.items():
-    print(f"Generating embeddings using {model_name}...")
-    start_time = time.time()
-    embeddings[model_name] = model.encode(df['sentence'].tolist(), show_progress_bar=True)
-    end_time = time.time()
-    training_time = end_time - start_time
-    if len(embeddings[model_name]) == 0:
-        raise ValueError(f"Embeddings for {model_name} are empty. Please check the model and the input data.")
-    # Save embeddings to CSV with training time in the filename
-    embeddings_df = pd.DataFrame(embeddings[model_name])
-    embeddings_df['sentence'] = df['sentence']
-    embeddings_df['document'] = df['document']
-    filename = f'embeddings_{model_name}_{training_time:.2f}s.csv'
-    embeddings_df.to_csv(filename, index=False, encoding='utf-8', escapechar='\\')
-    print(f"Embeddings for {model_name} saved to '{filename}' with training time {training_time:.2f} seconds.")
+# Generate embeddings for all sentences
+print(f"Generating embeddings using {model_name}...")
+start_time = time.time()
+embeddings = model.encode(df['sentence'].tolist(), show_progress_bar=True)
+end_time = time.time()
+training_time = end_time - start_time
+if len(embeddings) == 0:
+    raise ValueError(f"Embeddings for {model_name} are empty. Please check the model and the input data.")
+# Save embeddings to CSV with training time in the filename
+embeddings_df = pd.DataFrame(embeddings)
+embeddings_df['sentence'] = df['sentence']
+embeddings_df['document'] = df['document']
+filename = f'embeddings_{model_name}_{training_time:.2f}s.csv'
+embeddings_df.to_csv(filename, index=False, encoding='utf-8', escapechar='\\')
+print(f"Embeddings saved to '{filename}' with training time {training_time:.2f} seconds.")
 
 # Initialize the BERT question-answering model and tokenizer
 tokenizer = AutoTokenizer.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-model = AutoModelForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-qa_pipeline = pipeline('question-answering', model=model, tokenizer=tokenizer)
+qa_model = AutoModelForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
+qa_pipeline = pipeline('question-answering', model=qa_model, tokenizer=tokenizer)
 
 # Initialize the summarization model and tokenizer
 summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
@@ -195,28 +207,31 @@ while True:
         break
 
     threshold = 0.5  # Similarity score threshold
-    all_results = []
-    for model_name, model in models.items():
-        results = find_relevant_sentences(query, model, embeddings[model_name])
-        for result in results:
-            result['model'] = model_name
-            all_results.append(result)
+    results = find_relevant_sentences(query, model, embeddings)
 
     final_answer_parts = []
     citations = []
     combined_context = ""
-    for i, result in enumerate([r for r in all_results if r['similarity_score'] >= threshold][:5]):
+    for i, result in enumerate([r for r in results if r['similarity_score'] >= threshold][:5]):
         context = result['sentence']
         answer = qa_pipeline({'question': query, 'context': context})
-        final_answer_parts.append(f"Similar sentence: {result['sentence']} [{i+1}]\nSub-answer: {answer['answer']}\nSimilarity score: {result['similarity_score']:.2f}")
-        combined_context += f"{result['sentence']} Sub-answer: {answer['answer']} [{i+1}]. "
+        final_answer_parts.append(f"Context: {result['sentence']} [{i+1}]\nAnswer: {answer['answer']}\nSimilarity score: {result['similarity_score']:.2f}")
+        combined_context += f"Since {result['sentence']}, {answer['answer']} [{i+1}]. "
         citations.append(f"[{i+1}] {result['document']}")
 
     if combined_context == "":
-        final_answer_text = "No answer available."
+        final_answer_text = "No relevant answers available."
     else:
+        # get the number of tokens in the combined context
+        length = len(summarizer_tokenizer(combined_context)['input_ids'])
+        summarization_percentage = 0.5
+        minimum_percentage = 0.25
+        
+        max_length = int(length * summarization_percentage)
+        min_length = int(length * minimum_percentage)
+        
         # Generate a summary answer using the summarization model
-        summary = summarizer(combined_context, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
+        summary = summarizer(combined_context, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text']
 
         # Combine the answers, summary, and citations into the final text
         final_answer_text = f"Query: {query}\nFinal answer: {summary}\n\nContext:\n\n" + "\n\n".join(final_answer_parts) + "\n\n" + '\n'.join(citations)
