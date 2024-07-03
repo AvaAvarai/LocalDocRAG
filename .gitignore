@@ -11,3 +11,5 @@ output/*/
 *.msi
 *.txt
 *.zip
+*heatmaps
+*_sentences
