@@ -161,9 +161,13 @@ def find_similar_passages(query, top_k=5, threshold=0.65):
     query_embedding_norm = np.linalg.norm(query_embedding)
     sentence_embeddings_norm = np.linalg.norm(sentence_embeddings, axis=1)
     cosine_similarities = np.dot(sentence_embeddings, query_embedding) / (sentence_embeddings_norm * query_embedding_norm)
-    top_indices = np.argsort(cosine_similarities)[-top_k:][::-1]
-    top_passages = [(sentences[i], references[i], cosine_similarities[i]) for i in top_indices if cosine_similarities[i] >= threshold]
-    return top_passages
+    
+    # Sort indices by similarity score in descending order
+    sorted_indices = np.argsort(cosine_similarities)[::-1]
+    top_passages = [(sentences[i], references[i], cosine_similarities[i]) for i in sorted_indices if cosine_similarities[i] >= threshold]
+    
+    # Return top_k results
+    return top_passages[:top_k]
 
 # Initialize the BART model for summarization
 bart_model_name = 'facebook/bart-large-cnn'
