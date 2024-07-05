@@ -8,8 +8,6 @@ import tkinter as tk
 from tkinter import scrolledtext, filedialog, messagebox
 from threading import Thread
 from sentence_transformers import SentenceTransformer
-from haystack.document_stores import InMemoryDocumentStore
-from haystack.nodes import BM25Retriever
 from transformers import BartTokenizer, BartForConditionalGeneration
 from docx import Document
 import fitz  # PyMuPDF
@@ -113,12 +111,15 @@ def load_existing_embeddings():
         sentence_embeddings, sentences, references = load_embeddings(load_file)
         messagebox.showinfo("Info", "Embeddings loaded successfully!")
 
-# Function to find similar passages using dot product
-def find_similar_passages(query, top_k=5):
+# Function to find similar passages using cosine similarity
+def find_similar_passages(query, top_k=5, threshold=0.7):
     query_embedding = sentence_model.encode([query])[0]
-    scores = np.dot(sentence_embeddings, query_embedding)
-    top_indices = np.argsort(scores)[-top_k:][::-1]
-    return [(sentences[i], references[i], scores[i]) for i in top_indices]
+    query_embedding_norm = np.linalg.norm(query_embedding)
+    sentence_embeddings_norm = np.linalg.norm(sentence_embeddings, axis=1)
+    cosine_similarities = np.dot(sentence_embeddings, query_embedding) / (sentence_embeddings_norm * query_embedding_norm)
+    top_indices = np.argsort(cosine_similarities)[-top_k:][::-1]
+    top_passages = [(sentences[i], references[i], cosine_similarities[i]) for i in top_indices if cosine_similarities[i] >= threshold]
+    return top_passages
 
 # Initialize the BART model for summarization
 bart_model_name = 'facebook/bart-large-cnn'
@@ -130,7 +131,21 @@ def generate_summary(text):
     inputs = bart_tokenizer([text], max_length=1024, return_tensors='pt', truncation=True)
     summary_ids = bart_model.generate(
         inputs['input_ids'],
-        max_length=150,
+        max_length=300,  # Adjusted for relative length limits
+        min_length=40,
+        length_penalty=2.0,
+        num_beams=4,
+        early_stopping=True,
+        do_sample=False  # Disable sampling for determinism
+    )
+    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+# Function to generate sub-answer for each similar sentence
+def generate_sub_answer(sentence):
+    inputs = bart_tokenizer([sentence], max_length=1024, return_tensors='pt', truncation=True)
+    summary_ids = bart_model.generate(
+        inputs['input_ids'],
+        max_length=150,  # Adjusted for relative length limits
         min_length=40,
         length_penalty=2.0,
         num_beams=4,
@@ -141,26 +156,37 @@ def generate_summary(text):
 
 # Function to process the query and return the answer with citations
 def process_query(query):
-    similar_passages = find_similar_passages(query)
-    combined_text = ' '.join([f"{text} (Source: {source})" for text, source, score in similar_passages])
-    summary = generate_summary(combined_text)
-    return summary
+    threshold = similarity_threshold.get() / 100.0
+    k_value = k_dial.get()
+    similar_passages = find_similar_passages(query, top_k=k_value, threshold=threshold)
+    if not similar_passages:
+        return "Sorry, the bot cannot answer this question.", "", []
+    sub_answers = [generate_sub_answer(text) for text, _, _ in similar_passages]
+    combined_sub_answers = ' '.join(sub_answers)
+    summary = generate_summary(combined_sub_answers)
+    detailed_info = "\n\n".join([f"Similar sentence: {text}\n[Source: {source}]\nSimilarity score: {score:.2f}" for text, source, score in similar_passages])
+    sources = ", ".join({source for _, source, _ in similar_passages})
+    return summary, detailed_info, sources
 
 # Function to handle the query submission
-def submit_query():
+def submit_query(event=None):
     query = query_entry.get()
     chat_history.config(state=tk.NORMAL)
     chat_history.insert(tk.END, f"You: {query}\n", 'user')
     chat_history.insert(tk.END, "Bot: Generating response, please wait...\n", 'bot_loading')
+    query_entry.delete(0, tk.END)
     chat_history.yview(tk.END)
     
     def run_query():
-        response = process_query(query)
+        summary, detailed_info, sources = process_query(query)
         chat_history.config(state=tk.NORMAL)
         chat_history.delete('end-2l', 'end-1l')  # Remove the "Generating response" line
-        chat_history.insert(tk.END, f"Bot: {response}\n", 'bot')
+        chat_history.insert(tk.END, f"Bot: {summary}\n", 'bot')
+        if sources:
+            chat_history.insert(tk.END, f"Sources: {sources}\n", 'bot_sources')
+        if show_details.get() == 1 and detailed_info:
+            chat_history.insert(tk.END, f"{detailed_info}\n", 'bot_detail')
         chat_history.config(state=tk.DISABLED)
-        query_entry.delete(0, tk.END)
     
     Thread(target=run_query).start()
 
@@ -177,9 +203,25 @@ def show_start_menu():
     load_button = tk.Button(menu, text="Load Existing Embeddings", command=lambda: [load_existing_embeddings(), menu.destroy()])
     load_button.pack(pady=5)
 
+    menu.update_idletasks()
+    width = menu.winfo_width()
+    height = menu.winfo_height()
+    x = (menu.winfo_screenwidth() // 2) - (width // 2)
+    y = (menu.winfo_screenheight() // 2) - (height // 2)
+    menu.geometry(f'{width}x{height}+{x}+{y}')
+    
     menu.transient(root)
     menu.grab_set()
     root.wait_window(menu)
+
+# Function to center the main window
+def center_window(window):
+    window.update_idletasks()
+    width = window.winfo_width()
+    height = window.winfo_height()
+    x = (window.winfo_screenwidth() // 2) - (width // 2)
+    y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f'{width}x{height}+{x}+{y}')
 
 # Initialize Sentence Transformer model
 model_name = 'multi-qa-mpnet-base-dot-v1'
@@ -189,20 +231,49 @@ sentence_model = SentenceTransformer(model_name)
 root = tk.Tk()
 root.title("Document QA Chatbot")
 
+# Bind the Escape key to exit the application
+root.bind('<Escape>', lambda e: root.quit())
+
+# Configure grid to expand with window size
+root.grid_rowconfigure(0, weight=1)
+root.grid_columnconfigure(0, weight=1)
+root.grid_columnconfigure(1, weight=0)
+
 # Chat history text area
 chat_history = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
 chat_history.tag_config('user', foreground='blue')
 chat_history.tag_config('bot', foreground='green')
 chat_history.tag_config('bot_loading', foreground='lightgray')
-chat_history.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+chat_history.tag_config('bot_sources', foreground='orange')
+chat_history.tag_config('bot_detail', foreground='purple')
+chat_history.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky='nsew')
 
 # Query entry
 query_entry = tk.Entry(root, width=80)
-query_entry.grid(row=1, column=0, padx=10, pady=10)
+query_entry.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
+query_entry.bind("<Return>", submit_query)
 
 # Submit button
 submit_button = tk.Button(root, text="Submit", command=submit_query)
 submit_button.grid(row=1, column=1, padx=10, pady=10)
+
+# Radio button for showing detailed information
+show_details = tk.IntVar()
+show_details.set(0)
+details_radio = tk.Checkbutton(root, text="Show detailed info", variable=show_details)
+details_radio.grid(row=2, column=0, padx=10, pady=10, sticky='w')
+
+# Similarity threshold slider
+similarity_threshold = tk.Scale(root, from_=0, to=100, orient=tk.HORIZONTAL, label="Similarity Threshold")
+similarity_threshold.set(70)  # Default value
+similarity_threshold.grid(row=2, column=1, padx=10, pady=10, sticky='w')
+# K dial
+k_dial = tk.Scale(root, from_=1, to=50, orient=tk.HORIZONTAL, label="Top K")
+k_dial.set(5)  # Default value
+k_dial.grid(row=2, column=2, padx=10, pady=10, sticky='w')
+
+# Center the main window
+center_window(root)
 
 # Show start menu
 show_start_menu()
