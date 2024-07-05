@@ -3,15 +3,10 @@ from tkinter import ttk
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances, manhattan_distances
+from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import chebyshev, minkowski, mahalanobis, hamming, jaccard, directed_hausdorff
 from sentence_transformers import SentenceTransformer
-
-# Function to normalize embeddings
-def normalize_embeddings(X):
-    norms = np.linalg.norm(X, axis=1, keepdims=True)
-    return X / norms
 
 # Function to compute the angular distance matrix
 def compute_angular_distance_matrix(cosine_sim_matrix):
@@ -21,7 +16,7 @@ def compute_angular_distance_matrix(cosine_sim_matrix):
 def compute_hausdorff_entry(args):
     i, j, X = args
     return i, j, max(
-        directed_hausdorff(X[i].reshape(1, -1), X[j].reshape(1, -1))[0], 
+        directed_hausdorff(X[i].reshape(1, -1), X[j].reshape(1, -1))[0],
         directed_hausdorff(X[j].reshape(1, -1), X[i].reshape(1, -1))[0]
     )
 
@@ -32,7 +27,7 @@ def hausdorff_distance_matrix(X):
     for i in range(n):
         for j in range(i, n):
             distance = max(
-                directed_hausdorff(X[i].reshape(1, -1), X[j].reshape(1, -1))[0], 
+                directed_hausdorff(X[i].reshape(1, -1), X[j].reshape(1, -1))[0],
                 directed_hausdorff(X[j].reshape(1, -1), X[i].reshape(1, -1))[0]
             )
             hausdorff_matrix[i, j] = distance
@@ -101,13 +96,23 @@ def compute_max_min_difference_matrices(X):
             min_diff_matrix[i, j] = min_diff_matrix[j, i] = min_diff
     return max_diff_matrix, min_diff_matrix
 
-# Function to find top K similar sentences
-def find_top_k_similar_sentences(matrix, metadata, k=10):
-    n = matrix.shape[0]
+# Function to find top K similar sentences using NearestNeighbors for cosine similarity
+def find_top_k_similar_sentences_cosine(query_embedding, embeddings, metadata, k=10):
+    nbrs = NearestNeighbors(n_neighbors=min(k, len(embeddings)), metric='cosine').fit(embeddings)
+    distances, indices = nbrs.kneighbors(query_embedding.reshape(1, -1), n_neighbors=min(k, len(embeddings)))
+    results = []
+    for idx, distance in zip(indices[0], distances[0]):
+        similarity_score = 1 - distance  # Convert cosine distance to similarity
+        results.append((similarity_score, metadata['sentence'].iloc[idx], metadata['document'].iloc[idx]))
+    return results
+
+# Function to find top K similar sentences for other metrics
+def find_top_k_similar_sentences(distance_matrix, metadata, k=10):
+    n = distance_matrix.shape[0]
     similarities = []
     for i in range(n - 1):
-        similarities.append((matrix[-1, i], metadata['sentence'][i]))
-    similarities.sort(key=lambda x: x[0], reverse=True)
+        similarities.append((distance_matrix[-1, i], metadata['sentence'].iloc[i], metadata['document'].iloc[i]))
+    similarities.sort(key=lambda x: x[0])
     return similarities[:k]
 
 # Function to generate the distance matrix
@@ -144,17 +149,45 @@ def generate_distance_matrix(embeddings, metric, **kwargs):
 
 # Function to visualize top K similar sentences in a 1D space for each metric
 def visualize_similar_sentences(metrics, embeddings, query_embedding, metadata, k=10):
-    # Normalize embeddings
-    embeddings = normalize_embeddings(embeddings)
-    query_embedding = normalize_embeddings(query_embedding.reshape(1, -1))
-
     # Combine the query embedding with the original embeddings
     embeddings_with_query = np.vstack((embeddings, query_embedding))
-    metadata_with_query = metadata.append({'sentence': 'QUERY', 'document': 'query'}, ignore_index=True)
+    metadata_with_query = pd.concat([metadata, pd.DataFrame([{'sentence': 'QUERY', 'document': 'query'}])], ignore_index=True)
+
+    # Check for NaNs in embeddings
+    if np.isnan(embeddings_with_query).any():
+        print("NaN values detected in embeddings.")
+        return
 
     # Create a Tkinter window
     root = tk.Tk()
     root.title("Top K Similar Sentences for Each Metric")
+
+    # Create a frame for query input and controls
+    control_frame = ttk.Frame(root)
+    control_frame.pack(pady=10)
+
+    # Query input
+    query_label = ttk.Label(control_frame, text="Query:")
+    query_label.grid(row=0, column=0, padx=5)
+    query_entry = ttk.Entry(control_frame, width=50)
+    query_entry.grid(row=0, column=1, padx=5)
+
+    # K input
+    k_label = ttk.Label(control_frame, text="K:")
+    k_label.grid(row=0, column=2, padx=5)
+    k_spinbox = ttk.Spinbox(control_frame, from_=1, to=100, width=5)
+    k_spinbox.set(10)
+    k_spinbox.grid(row=0, column=3, padx=5)
+
+    # Query button
+    def query_action():
+        query = query_entry.get()
+        k = int(k_spinbox.get())
+        query_embedding = model.encode([query])
+        visualize_sentences(metrics, embeddings, query_embedding, metadata, k)
+
+    query_button = ttk.Button(control_frame, text="Query", command=query_action)
+    query_button.grid(row=0, column=4, padx=5)
 
     # Create tabs for each metric
     tab_control = ttk.Notebook(root)
@@ -166,37 +199,59 @@ def visualize_similar_sentences(metrics, embeddings, query_embedding, metadata, 
 
     tab_control.pack(expand=1, fill='both')
 
-    for metric in metrics:
-        distance_matrix = generate_distance_matrix(embeddings_with_query, metric)
-        top_k_similar = find_top_k_similar_sentences(distance_matrix, metadata_with_query, k)
+    def visualize_sentences(metrics, embeddings, query_embedding, metadata, k):
+        # Generate a unique color for each document
+        unique_docs = metadata['document'].unique()
+        color_palette = sns.color_palette("husl", len(unique_docs)).as_hex()
+        doc_color_map = {doc: color for doc, color in zip(unique_docs, color_palette)}
 
-        # Plot the similar sentences in 1D space
-        tab = tabs[metric]
-        canvas = tk.Canvas(tab, width=800, height=400)
-        canvas.pack()
+        for metric in metrics:
+            if metric == 'cosine':
+                top_k_similar = find_top_k_similar_sentences_cosine(query_embedding, embeddings, metadata, k)
+            else:
+                distance_matrix = generate_distance_matrix(np.vstack((embeddings, query_embedding)), metric)
+                top_k_similar = find_top_k_similar_sentences(distance_matrix, metadata, k)
 
-        # Draw the query point
-        query_x = 400
-        query_y = 200
-        canvas.create_oval(query_x - 5, query_y - 5, query_x + 5, query_y + 5, fill='blue')
+            # Create a color gradient for visualization
+            colors = sns.color_palette("coolwarm", n_colors=k).as_hex()
 
-        # Draw the similar points
-        for i, (score, sentence) in enumerate(top_k_similar):
-            x = query_x + (i + 1) * 30
-            y = query_y
-            canvas.create_oval(x - 5, y - 5, x + 5, y + 5, fill='red')
-            canvas.create_text(x, y + 10, text=f"{score:.4f}", anchor='n')
+            # Plot all sentences
+            tab = tabs[metric]
+            for widget in tab.winfo_children():
+                widget.destroy()
+            canvas = tk.Canvas(tab, width=800, height=400)
+            canvas.pack()
 
-        # Display the sentences in a listbox
-        listbox = tk.Listbox(tab)
-        listbox.pack(fill='both', expand=1)
-        for score, sentence in top_k_similar:
-            listbox.insert(tk.END, f"Score: {score:.4f} - Sentence: {sentence}")
+            # Draw all sentences with a unique color per document
+            all_x = np.linspace(50, 750, len(metadata))
+            all_y = 200
+            for i, (x, sentence, doc) in enumerate(zip(all_x, metadata['sentence'], metadata['document'])):
+                color = doc_color_map[doc]
+                canvas.create_oval(x - 5, all_y - 5, x + 5, all_y + 5, fill=color)
+
+            # Highlight the similar points
+            for i, (score, sentence, doc) in enumerate(top_k_similar):
+                index = metadata[metadata['sentence'] == sentence].index[0]
+                x = all_x[index]
+                canvas.create_oval(x - 5, all_y - 5, x + 5, all_y + 5, fill=colors[i])
+
+            # Display the sentences in a listbox
+            listbox = tk.Listbox(tab)
+            listbox.pack(fill='both', expand=1)
+            for i, (score, sentence, doc) in enumerate(top_k_similar):
+                listbox.insert(tk.END, f"Score: {score:.4f} - Sentence: {sentence} - Document: {doc}")
+
+            # Add a legend
+            legend_frame = ttk.Frame(tab)
+            legend_frame.pack(pady=5)
+            for doc, color in doc_color_map.items():
+                legend_label = tk.Label(legend_frame, text=doc, bg=color, width=20)
+                legend_label.pack(side=tk.LEFT, padx=5)
 
     root.mainloop()
 
 # Load the CSV file into a DataFrame
-csv_file = 'embeddings_SBERT_382.62s.csv'
+csv_file = 'embeddings_all-MiniLM-L6-v2_420.44s.csv'
 print(f"Loading data from {csv_file}")
 df = pd.read_csv(csv_file)
 
@@ -206,24 +261,20 @@ embedding_columns = [str(i) for i in range(384)]
 embeddings = df[embedding_columns].values
 metadata = df[['sentence', 'document']]
 
-# Normalize embeddings
-print(f"Normalizing embeddings")
-embeddings = normalize_embeddings(embeddings)
+# Check for NaNs in embeddings
+if np.isnan(embeddings).any():
+    print("NaN values detected in embeddings.")
+else:
+    # Load the pre-trained model
+    model_name = 'all-MiniLM-L6-v2'
+    model = SentenceTransformer(model_name)
 
-# Load the pre-trained model
-model_name = 'all-MiniLM-L6-v2'
-model = SentenceTransformer(model_name)
+    # Define metrics
+    metrics = [
+        'cosine', 'euclidean', 'manhattan', 'chebyshev', 'minkowski',
+        'mahalanobis', 'hamming', 'jaccard', 'angular', 'hausdorff',
+        'max_diff', 'min_diff'
+    ]
 
-# Query input
-query = input("Enter your query: ")
-query_embedding = model.encode([query])
-
-# Define metrics
-metrics = [
-    'cosine', 'euclidean', 'manhattan', 'chebyshev', 'minkowski',
-    'mahalanobis', 'hamming', 'jaccard', 'angular', 'hausdorff',
-    'max_diff', 'min_diff'
-]
-
-# Visualize similar sentences
-visualize_similar_sentences(metrics, embeddings, query_embedding, metadata, k=10)
+    # Run the main GUI loop
+    visualize_similar_sentences(metrics, embeddings, np.zeros_like(embeddings[0]), metadata, k=10)
