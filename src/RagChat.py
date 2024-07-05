@@ -112,7 +112,7 @@ def load_existing_embeddings():
         messagebox.showinfo("Info", "Embeddings loaded successfully!")
 
 # Function to find similar passages using cosine similarity
-def find_similar_passages(query, top_k=5, threshold=0.7):
+def find_similar_passages(query, top_k=5, threshold=0.65):
     query_embedding = sentence_model.encode([query])[0]
     query_embedding_norm = np.linalg.norm(query_embedding)
     sentence_embeddings_norm = np.linalg.norm(sentence_embeddings, axis=1)
@@ -161,11 +161,15 @@ def process_query(query):
     similar_passages = find_similar_passages(query, top_k=k_value, threshold=threshold)
     if not similar_passages:
         return "Sorry, the bot cannot answer this question.", "", []
-    sub_answers = [generate_sub_answer(text) for text, _, _ in similar_passages]
-    combined_sub_answers = ' '.join(sub_answers)
-    summary = generate_summary(combined_sub_answers)
+
+    # Extracting the most relevant parts of the similar sentences
+    combined_text = ' '.join([text for text, _, _ in similar_passages])
+
+    # Summarize the combined relevant parts using BART
+    summary = generate_summary(combined_text)
     detailed_info = "\n\n".join([f"Similar sentence: {text}\n[Source: {source}]\nSimilarity score: {score:.2f}" for text, source, score in similar_passages])
     sources = ", ".join({source for _, source, _ in similar_passages})
+
     return summary, detailed_info, sources
 
 # Function to handle the query submission
@@ -194,8 +198,9 @@ def submit_query(event=None):
 def show_start_menu():
     menu = tk.Toplevel(root)
     menu.title("Start Menu")
-
-    tk.Label(menu, text="Choose an option:").pack(pady=10)
+    menu.config(bg='#f0f0f0')
+    
+    tk.Label(menu, text="Choose an option:", bg='#f0f0f0', font=('Arial', 12)).pack(pady=10)
 
     generate_button = tk.Button(menu, text="Generate New Embeddings", command=lambda: [generate_and_save_embeddings(), menu.destroy()])
     generate_button.pack(pady=5)
@@ -230,6 +235,7 @@ sentence_model = SentenceTransformer(model_name)
 # Set up the GUI
 root = tk.Tk()
 root.title("Document QA Chatbot")
+root.config(bg='#f0f0f0')
 
 # Bind the Escape key to exit the application
 root.bind('<Escape>', lambda e: root.quit())
@@ -239,38 +245,51 @@ root.grid_rowconfigure(0, weight=1)
 root.grid_columnconfigure(0, weight=1)
 root.grid_columnconfigure(1, weight=0)
 
+# Chat history frame
+chat_frame = tk.Frame(root, bg='#f0f0f0')
+chat_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky='nsew')
+
 # Chat history text area
-chat_history = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
-chat_history.tag_config('user', foreground='blue')
-chat_history.tag_config('bot', foreground='green')
+chat_history = scrolledtext.ScrolledText(chat_frame, wrap=tk.WORD, state='disabled', font=('Arial', 10), bg='#ffffff')
+chat_history.tag_config('user', foreground='blue', font=('Arial', 10, 'bold'))
+chat_history.tag_config('bot', foreground='green', font=('Arial', 10, 'italic'))
 chat_history.tag_config('bot_loading', foreground='lightgray')
 chat_history.tag_config('bot_sources', foreground='orange')
 chat_history.tag_config('bot_detail', foreground='purple')
-chat_history.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky='nsew')
+chat_history.pack(fill='both', expand=True)
+
+# Query frame
+query_frame = tk.Frame(root, bg='#f0f0f0')
+query_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
 
 # Query entry
-query_entry = tk.Entry(root, width=80)
-query_entry.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
+query_entry = tk.Entry(query_frame, font=('Arial', 12))
+query_entry.pack(fill='x', side='left', expand=True, padx=(0, 5))
 query_entry.bind("<Return>", submit_query)
 
 # Submit button
-submit_button = tk.Button(root, text="Submit", command=submit_query)
-submit_button.grid(row=1, column=1, padx=10, pady=10)
+submit_button = tk.Button(query_frame, text="Submit", command=submit_query, font=('Arial', 12))
+submit_button.pack(side='left')
+
+# Control frame
+control_frame = tk.Frame(root, bg='#f0f0f0')
+control_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
 
 # Radio button for showing detailed information
 show_details = tk.IntVar()
 show_details.set(0)
-details_radio = tk.Checkbutton(root, text="Show detailed info", variable=show_details)
-details_radio.grid(row=2, column=0, padx=10, pady=10, sticky='w')
+details_radio = tk.Checkbutton(control_frame, text="Show detailed info", variable=show_details, bg='#f0f0f0', font=('Arial', 10))
+details_radio.pack(side='left', padx=5)
 
 # Similarity threshold slider
-similarity_threshold = tk.Scale(root, from_=0, to=100, orient=tk.HORIZONTAL, label="Similarity Threshold")
-similarity_threshold.set(70)  # Default value
-similarity_threshold.grid(row=2, column=1, padx=10, pady=10, sticky='w')
+similarity_threshold = tk.Scale(control_frame, from_=0, to=100, orient=tk.HORIZONTAL, label="Similarity Threshold", bg='#f0f0f0', font=('Arial', 10), length=200)
+similarity_threshold.set(65)  # Default value
+similarity_threshold.pack(side='left', padx=5)
+
 # K dial
-k_dial = tk.Scale(root, from_=1, to=50, orient=tk.HORIZONTAL, label="Top K")
+k_dial = tk.Scale(control_frame, from_=1, to=50, orient=tk.HORIZONTAL, label="Top K", bg='#f0f0f0', font=('Arial', 10))
 k_dial.set(5)  # Default value
-k_dial.grid(row=2, column=2, padx=10, pady=10, sticky='w')
+k_dial.pack(side='left', padx=5)
 
 # Center the main window
 center_window(root)
