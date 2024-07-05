@@ -23,6 +23,37 @@ def set_seed(seed):
 
 set_seed(42)
 
+# Function to clean up redundant spacing, remove newlines and tabs, and remove punctuation
+def clean_sentence(sentence, seen_sentences):
+    sentence = sentence.encode('utf-8', 'ignore').decode('utf-8')
+    sentence = sentence.replace('\n', ' ').replace('\t', ' ').replace('  ', ' ')
+    if sentence not in seen_sentences:
+        seen_sentences.add(sentence)
+        return sentence
+    return None
+
+# Function to remove unwanted references from text
+def remove_references(text):
+    text = re.sub(r'\b(Fig|Table|Fig\.|Table\.|Figure)\s?\d+\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(Fig|Table|Figure)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\s?\d+\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(Sect|Sec|Section|Sect\.|Sec\.)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\s?\b.*\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(depicted in|shown in|seen in|illustrated in|presented in|described in)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[\d+\]', '', text)
+    text = re.sub(r'\(\d+\)', '', text)
+    text = text.replace('  ', ' ')
+    return text
+
+# Remove sentences which are too short after cleaning and filtering ignoring 1 and 2 letter words
+def filter_too_short(text, min_length=5):
+    words_in_text = text.split(' ')
+    copy = words_in_text.copy()
+    for word in words_in_text:
+        if len(word) <= 2:
+            copy.remove(word)
+    return len(copy) >= min_length
+
 # Function to convert DOCX files to text
 def convert_docx_to_text(file_path):
     doc = Document(file_path)
@@ -63,6 +94,19 @@ def convert_files(directory):
             docs.append(doc)
     return docs
 
+# Function to clean and filter sentences
+def clean_and_filter_sentences(text):
+    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+    seen_sentences = set()
+    cleaned_sentences = []
+    for sentence in sentences:
+        cleaned_sentence = clean_sentence(sentence, seen_sentences)
+        if cleaned_sentence:
+            cleaned_sentence = remove_references(cleaned_sentence)
+            if cleaned_sentence and filter_too_short(cleaned_sentence):
+                cleaned_sentences.append(cleaned_sentence)
+    return cleaned_sentences
+
 # Function to save embeddings to a CSV file
 def save_embeddings(embeddings, sentences, references, filename):
     df = pd.DataFrame(embeddings)
@@ -86,14 +130,14 @@ def generate_and_save_embeddings():
     doc_texts = [doc['content'] for doc in docs]
     doc_names = [doc['meta']['name'] for doc in docs]
 
-    # Split documents into sentences and generate embeddings
+    # Split documents into sentences, clean, and generate embeddings
     sentences = []
     references = []
     for text, name in zip(doc_texts, doc_names):
-        for sentence in re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text):
-            if sentence.strip():
-                sentences.append(sentence.strip())
-                references.append(name)
+        cleaned_sentences = clean_and_filter_sentences(text)
+        for sentence in cleaned_sentences:
+            sentences.append(sentence)
+            references.append(name)
 
     sentence_embeddings = sentence_model.encode(sentences, show_progress_bar=True)
 
@@ -261,6 +305,7 @@ chat_history.pack(fill='both', expand=True)
 # Query frame
 query_frame = tk.Frame(root, bg='#f0f0f0')
 query_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
+query_frame.grid_columnconfigure(0, weight=1)
 
 # Query entry
 query_entry = tk.Entry(query_frame, font=('Arial', 12))
@@ -274,6 +319,7 @@ submit_button.pack(side='left')
 # Control frame
 control_frame = tk.Frame(root, bg='#f0f0f0')
 control_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
+control_frame.grid_columnconfigure(0, weight=1)
 
 # Radio button for showing detailed information
 show_details = tk.IntVar()
