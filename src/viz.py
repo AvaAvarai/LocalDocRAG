@@ -3,29 +3,27 @@ import matplotlib.pyplot as plt
 from pandas.plotting import parallel_coordinates
 import tkinter as tk
 from tkinter import filedialog
-import seaborn as sns
 
-# Step 1: Load the CSV file containing embeddings
+# Step 1: Load the entire CSV file containing embeddings
 def load_embeddings(filename):
     df = pd.read_csv(filename)
     return df
 
-# Step 2: Prepare the data
+# Step 2: Prepare the data by excluding the 'sentence' column
 def prepare_data_for_parallel_coordinates(df):
-    # Exclude the 'sentence' column from the DataFrame
     numeric_columns = df.drop(columns=['sentence'])
     return numeric_columns
 
-# Step 3: Standard Parallel Coordinates Plot with Distinct Colors
+# Step 3: Parallel Coordinates Plot with Flat Alpha
 def visualize_and_save_parallel_coordinates(df, output_file='parallel_coordinates.png'):
     plt.figure(figsize=(30, 10))  # Adjust figure size based on the number of dimensions
 
-    # Create a custom color palette based on the number of unique classes
+    # Use Matplotlib's color map to create distinct colors
     unique_classes = df['document'].unique()
-    palette = sns.color_palette("husl", len(unique_classes))
+    colors = plt.colormaps['tab10'](range(len(unique_classes)))
 
-    # Create the parallel coordinates plot with distinct colors
-    parallel_coordinates(df, class_column='document', color=palette, alpha=0.5)
+    # Create the parallel coordinates plot with a flat alpha
+    parallel_coordinates(df, class_column='document', color=colors, alpha=0.1)
     
     plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
     plt.tight_layout()  # Adjust layout to avoid clipping
@@ -62,7 +60,7 @@ if __name__ == "__main__":
     filename = select_file()
 
     if filename:  # Proceed if a file was selected
-        # Load embeddings from the CSV file
+        # Load the entire dataset
         df = load_embeddings(filename)
         
         # Prepare the data for visualization
