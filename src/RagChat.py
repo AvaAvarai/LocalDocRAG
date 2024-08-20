@@ -139,6 +139,12 @@ def generate_and_save_embeddings():
             sentences.append(sentence)
             references.append(name)
 
+    # Check if there are any sentences to encode
+    if not sentences:
+        messagebox.showwarning("Warning", "No documents or valid sentences found. Please load documents and try again.")
+        return
+
+    # Generate sentence embeddings
     sentence_embeddings = sentence_model.encode(sentences, show_progress_bar=True)
 
     # Save embeddings to a file
