@@ -13,3 +13,4 @@ output/*/
 *.zip
 *heatmaps
 *_sentences
+.DS_Store
