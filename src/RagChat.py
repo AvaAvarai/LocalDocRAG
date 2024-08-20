@@ -192,7 +192,7 @@ def generate_summary(text):
         early_stopping=True,
         do_sample=False  # Disable sampling for determinism
     )
-    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
 # Function to generate sub-answer for each similar sentence
 def generate_sub_answer(sentence):
@@ -206,7 +206,7 @@ def generate_sub_answer(sentence):
         early_stopping=True,
         do_sample=False  # Disable sampling for determinism
     )
-    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
 # Function to process the query and return the answer with citations
 def process_query(query):
