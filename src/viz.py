@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from pandas.plotting import parallel_coordinates
 import tkinter as tk
 from tkinter import filedialog
+import seaborn as sns
 
 # Step 1: Load the CSV file containing embeddings
 def load_embeddings(filename):
@@ -15,12 +16,16 @@ def prepare_data_for_parallel_coordinates(df):
     numeric_columns = df.drop(columns=['sentence'])
     return numeric_columns
 
-# Step 3: Standard Parallel Coordinates Plot
+# Step 3: Standard Parallel Coordinates Plot with Distinct Colors
 def visualize_and_save_parallel_coordinates(df, output_file='parallel_coordinates.png'):
     plt.figure(figsize=(30, 10))  # Adjust figure size based on the number of dimensions
 
-    # Create the parallel coordinates plot using Matplotlib's default settings
-    parallel_coordinates(df, class_column='document', alpha=0.5)
+    # Create a custom color palette based on the number of unique classes
+    unique_classes = df['document'].unique()
+    palette = sns.color_palette("husl", len(unique_classes))
+
+    # Create the parallel coordinates plot with distinct colors
+    parallel_coordinates(df, class_column='document', color=palette, alpha=0.5)
     
     plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
     plt.tight_layout()  # Adjust layout to avoid clipping
