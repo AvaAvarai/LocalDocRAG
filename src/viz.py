@@ -1,6 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from pandas.plotting import parallel_coordinates
+import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 
@@ -15,17 +15,31 @@ def prepare_data_for_parallel_coordinates(df):
     numeric_columns = df.drop(columns=['sentence'])
     return numeric_columns
 
-# Step 3: Visualize the embeddings using Matplotlib and save as PNG
+# Step 3: Custom Parallel Coordinates Plot with Reduced Spacing
 def visualize_and_save_parallel_coordinates(df, output_file='parallel_coordinates.png'):
-    plt.figure(figsize=(30, 15))  # Adjust figure size to accommodate more dimensions
+    num_vars = len(df.columns) - 1  # Exclude 'document' column
+    fig, axes = plt.subplots(1, num_vars, sharey=False, figsize=(min(num_vars * 1.5, 200), 10))
+
+    # Define the color mapping for each document category
+    categories = df['document'].unique()
+    colors = plt.cm.viridis(np.linspace(0, 1, len(categories)))
+    color_map = dict(zip(categories, colors))
+
+    for i, col in enumerate(df.columns[:-1]):  # Exclude the last column 'document'
+        for category in categories:
+            subset = df[df['document'] == category]
+            axes[i].plot([i] * len(subset), subset[col], marker='o', linestyle='-', color=color_map[category], alpha=0.5)
+        axes[i].set_title(col)
+        axes[i].set_xticks([i])
     
-    # Use 'document' column as class_column for coloring
-    parallel_coordinates(df, class_column='document', colormap='viridis', linewidth=0.5)
-    
-    plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
-    plt.tight_layout()  # Adjust layout to avoid clipping
-    
-    plt.savefig(output_file, dpi=300)  # Save as a high-resolution PNG file
+    # Reduce the spacing between axes
+    plt.subplots_adjust(wspace=0.2)  # Adjust the width between subplots to reduce size
+
+    # Add a legend outside the plot
+    fig.legend(handles=[plt.Line2D([0], [0], color=color_map[category], lw=2) for category in categories],
+               labels=categories, loc='center left', bbox_to_anchor=(1, 0.5))
+
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')  # Save as a high-resolution PNG file
     plt.close()
     print(f"Plot saved as {output_file}")
 

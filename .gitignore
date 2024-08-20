@@ -14,3 +14,4 @@ output/*/
 *heatmaps
 *_sentences
 .DS_Store
+*.png
