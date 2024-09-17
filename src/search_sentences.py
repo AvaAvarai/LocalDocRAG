@@ -51,7 +51,7 @@ def summarize_context(context, model, tokenizer, device):
 
 def generate_answer(question, context, model, tokenizer, device):
     # Create the prompt for answer generation
-    prompt = f"""You are a knowledgeable assistant specialized in technical domains. Using only the information provided in the context, answer the question precisely and include fine-grained details. Do not add any information that is not in the context.
+    prompt = f"""You are an expert assistant for answering questions from a set of provided documents. Based only on the following context, answer the question briefly and avoid repetition.
 
     Question:
     {question}
