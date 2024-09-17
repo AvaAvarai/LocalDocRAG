@@ -7,19 +7,21 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import json
 
-# Download NLTK data files
-nltk.download('punkt')
-nltk.download('punkt_tab')  # Required for NLTK 3.8 and above
+def download_nltk_data():
+    print("Downloading NLTK data files...")
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+    print("NLTK data files downloaded.")
 
 def is_valid_sentence(sentence):
     sentence = sentence.strip()
-    if len(sentence) < 10:  # Exclude sentences shorter than 10 characters
+    if len(sentence) < 10:
         return False
-    if not re.search('[a-zA-Z]', sentence):  # Exclude sentences without alphabetic characters
+    if not re.search('[a-zA-Z]', sentence):
         return False
-    if re.search(r'\S+@\S+|http\S+|www\S+', sentence):  # Exclude sentences containing emails or URLs
+    if re.search(r'\S+@\S+|http\S+|www\S+', sentence):
         return False
-    if sentence.isupper():  # Exclude sentences in all uppercase letters
+    if sentence.isupper():
         return False
     return True
 
@@ -29,49 +31,38 @@ def extract_sentences_from_pdf(pdf_path):
         for page in tqdm(pdf.pages, desc=f"Processing {os.path.basename(pdf_path)}", unit="page"):
             text = page.extract_text()
             if text:
-                # Remove URLs and emails
                 text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
                 text = re.sub(r'\S+@\S+', '', text)
-                # Remove extra whitespaces and newlines
                 text = text.replace('\n', ' ').strip()
-                # Tokenize sentences using NLTK
+                text = re.sub(r'-\s+', '', text)  # Remove hyphens and spaces following them
                 page_sentences = nltk.sent_tokenize(text, language='english')
                 sentences.extend(page_sentences)
-    # Filter out unwanted sentences
     sentences = [s.strip() for s in sentences if is_valid_sentence(s)]
     return sentences
 
 def process_pdfs():
-    pdf_folder = 'pdfs'  # Ensure this folder exists and contains your PDFs
+    pdf_folder = 'pdfs'
     output_csv = 'extracted_sentences.csv'
 
-    # Initialize the sentence transformer model
-    model_name = 'all-MiniLM-L6-v2'  # You can choose other models if you wish
+    model_name = 'all-MiniLM-L6-v2'
     model = SentenceTransformer(model_name)
 
-    # List all PDF files in the directory
     pdf_files = [filename for filename in os.listdir(pdf_folder) if filename.endswith('.pdf')]
 
-    # Open the CSV file for writing
     with open(output_csv, 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['Sentence', 'Source', 'Embedding']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-        # Use tqdm to add a progress bar for PDF processing
         for filename in tqdm(pdf_files, desc="Processing PDFs", unit="pdf"):
             pdf_path = os.path.join(pdf_folder, filename)
 
-            # Extract sentences from PDF
             sentences = extract_sentences_from_pdf(pdf_path)
 
-            # Generate embeddings for sentences
             if sentences:
                 embeddings = model.encode(sentences, show_progress_bar=True)
 
-                # Write data to CSV
                 for sentence, embedding in zip(sentences, embeddings):
-                    # Convert embedding to JSON string
                     embedding_str = json.dumps(embedding.tolist())
                     writer.writerow({
                         'Sentence': sentence,
@@ -82,4 +73,7 @@ def process_pdfs():
     print(f"Data saved to {output_csv}")
 
 if __name__ == "__main__":
+    print("Starting PDF processing...")
+    download_nltk_data()
     process_pdfs()
+    print("PDF processing completed.")

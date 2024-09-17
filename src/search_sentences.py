@@ -1,10 +1,9 @@
 import csv
 import json
 import numpy as np
-import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import warnings
 import torch
 
@@ -45,13 +44,15 @@ def main():
     model_name = 'all-MiniLM-L6-v2'  # Ensure this matches the model used previously
 
     # Correct device assignment
-    device_embedder = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device_summarizer = 0 if torch.cuda.is_available() else -1
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    embedder = SentenceTransformer(model_name, device=device_embedder)
+    embedder = SentenceTransformer(model_name, device=device)
 
-    # Initialize the summarization model
-    summarizer = pipeline('summarization', model='t5-small', device=device_summarizer)
+    # Initialize the LLM for answer generation
+    llm_model_name = "gpt2"  # You can change this to a more powerful model if available
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
+    tokenizer.pad_token = tokenizer.eos_token  # Assign pad_token to eos_token
+    llm = AutoModelForCausalLM.from_pretrained(llm_model_name, pad_token_id=tokenizer.eos_token_id).to(device)
 
     while True:
         # Accept user query
@@ -59,18 +60,6 @@ def main():
         query = input()
         if query.lower() == 'exit':
             break
-
-        # Accept similarity threshold
-        print("Enter the similarity threshold (e.g., 0.7): ", end='', flush=True)
-        threshold_input = input()
-        try:
-            threshold = float(threshold_input)
-            if not (0.0 < threshold <= 1.0):
-                print("Please enter a number between 0 and 1 for the threshold.")
-                continue
-        except ValueError:
-            print("Invalid input for threshold. Please enter a number between 0 and 1.")
-            continue
 
         # Generate embedding for the query
         print("Generating query embedding...")
@@ -80,39 +69,35 @@ def main():
         print("Computing similarities...")
         similarities = cosine_similarity([query_embedding], embeddings)[0]
 
-        # Select sentences above the threshold
-        relevant_indices = np.where(similarities >= threshold)[0]
+        # Sort sentences by similarity
+        sorted_indices = np.argsort(similarities)[::-1]
+        
+        # Prepare context for LLM
+        max_length = 512
+        context = ""
+        for idx in sorted_indices:
+            sentence = sentences[idx]
+            if len(tokenizer.encode(context + sentence)) > max_length:  # Adjust this number based on your LLM's max token limit
+                break
+            context += sentence + " "
 
-        if len(relevant_indices) == 0:
-            print("No sentences found with similarity above the threshold.")
-            continue
+        prompt = f"Based on the following information, answer the question: '{query}'\n\nInformation:\n{context}\n\nAnswer:"
 
-        # Retrieve relevant sentences and their sources
-        relevant_sentences = [sentences[idx] for idx in relevant_indices]
-        relevant_sources = [sources[idx] for idx in relevant_indices]
-        relevant_similarities = [similarities[idx] for idx in relevant_indices]
+        # Generate answer using LLM
+        print("\nGenerating answer...")
+        input_ids = tokenizer.encode(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
+        attention_mask = (input_ids != tokenizer.pad_token_id).long().to(device)
 
-        # Combine the relevant sentences into a single text
-        combined_text = ' '.join(relevant_sentences)
+        output = llm.generate(input_ids, attention_mask=attention_mask, max_new_tokens=150, num_return_sequences=1, no_repeat_ngram_size=2)
+        answer = tokenizer.decode(output[0], skip_special_tokens=True)
 
-        # Synthesize the final answer
-        print("\nSynthesizing answer...")
-        max_length = min(512, len(combined_text.split()))
-        summary = summarizer(
-            combined_text,
-            max_length=max_length,
-            min_length=40,
-            do_sample=False,
-            truncation=True,
-        )[0]['summary_text']
-
-        # Display the synthesized answer
+        # Display the generated answer
         print("\nFinal Answer:")
-        print(summary)
+        print(answer)
 
         # Display citations
-        print("\nCitations:")
-        for i, idx in enumerate(relevant_indices):
+        print("\nRelevant Information:")
+        for i, idx in enumerate(sorted_indices[:10]):  # Show top 10 most relevant sentences
             print(f"[{i+1}] {sentences[idx]} (Source: {sources[idx]}, Similarity: {similarities[idx]:.4f})")
 
 if __name__ == "__main__":
