@@ -19,7 +19,7 @@ def is_valid_sentence(sentence):
         return False
     if not re.search('[a-zA-Z]', sentence):
         return False
-    if re.search(r'\S+@\S+|http\S+|www\S+|©|\d{4}', sentence):
+    if re.search(r'\S+@\S+|http|https|www|©|\d{4}', sentence):
         return False
     if re.search(r'Fig\.|Table|Figure|Equation|Section|References|Copyright|Abstract|Introduction', sentence, re.IGNORECASE):
         return False
