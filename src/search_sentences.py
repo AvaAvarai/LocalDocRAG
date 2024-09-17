@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import warnings
 import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, BartTokenizer, BartForConditionalGeneration
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -38,22 +38,24 @@ def load_embeddings(csv_file):
         embeddings = np.array([])
     return sentences, sources, embeddings
 
-def generate_sub_answer(question, context, model, tokenizer, device):
-    # Create prompt
-    prompt = f"Question: {question}\nContext: {context}\nAnswer:"
+def generate_answer(question, context, model, tokenizer, device):
+    # Create the prompt tailored for technical content
+    prompt = f"""You are a knowledgeable assistant specialized in technical domains. Using only the information provided in the context, answer the question precisely and include fine-grained details. Do not add any information that is not in the context.
+
+    Question:
+    {question}
+
+    Context:
+    {context}
+
+    Answer:"""
     # Encode the prompt
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024).to(device)
     # Generate the answer
-    outputs = model.generate(**inputs, max_length=128)
+    outputs = model.generate(**inputs, max_length=250)
     # Decode the answer
     answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return answer.strip()
-
-def summarize_text(text, model, tokenizer, device):
-    inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=1024).to(device)
-    summary_ids = model.generate(inputs['input_ids'], num_beams=4, max_length=150, early_stopping=True)
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-    return summary.strip()
 
 def main():
     # Load the embeddings from the CSV file
@@ -74,15 +76,10 @@ def main():
 
     embedder = SentenceTransformer(model_name, device=device)
 
-    # Initialize the language model and tokenizer for sub-answer generation
-    lm_model_name = 'google/flan-t5-base'  # You can use 't5-base', 'flan-t5-base', etc.
+    # Initialize the language model and tokenizer for answer generation
+    lm_model_name = 'google/flan-t5-base'  # You can use 'google/flan-t5-large' if resources allow
     lm_tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
     lm_model = AutoModelForSeq2SeqLM.from_pretrained(lm_model_name).to(device)
-
-    # Initialize the summarization model and tokenizer
-    summarizer_model_name = 'facebook/bart-large-cnn'
-    summarizer_tokenizer = BartTokenizer.from_pretrained(summarizer_model_name)
-    summarizer_model = BartForConditionalGeneration.from_pretrained(summarizer_model_name).to(device)
 
     while True:
         # Accept user query
@@ -98,42 +95,34 @@ def main():
         print("Computing similarities...")
         similarities = cosine_similarity([query_embedding], embeddings)[0]
 
-        # Apply similarity threshold
-        similarity_threshold = 0.5  # Adjust as needed
-        relevant_indices = [idx for idx, score in enumerate(similarities) if score >= similarity_threshold]
+        # Get indices of top N similar sentences
+        top_n = 100 # Adjust this value as needed
+        top_indices = similarities.argsort()[-top_n:][::-1]
 
-        # Sort indices by similarity
-        sorted_indices = sorted(relevant_indices, key=lambda idx: similarities[idx], reverse=True)
-
-        if not sorted_indices:
-            print("No relevant information found in the documents.")
-            continue
-
-        # Generate sub-answers
-        max_subanswers = 5  # Adjust as needed
-        sub_answers = []
-        sources_used = []
-        print("\nGenerating sub-answers...")
-        for idx in sorted_indices[:max_subanswers]:
+        # Combine top N sentences into context, ensuring total length is within limits
+        context_sentences = []
+        total_length = 0
+        max_length = 1000  # Adjust based on model's max input length
+        for idx in top_indices:
             sentence = sentences[idx]
-            source = sources[idx]
-            # Generate sub-answer
-            sub_answer = generate_sub_answer(query, sentence, lm_model, lm_tokenizer, device)
-            sub_answers.append(sub_answer)
-            sources_used.append(source)
+            sentence_length = len(lm_tokenizer.encode(sentence))
+            if total_length + sentence_length > max_length:
+                break
+            context_sentences.append(sentence)
+            total_length += sentence_length
 
-        # Combine sub-answers
-        combined_sub_answers = "\n".join(sub_answers)
+        combined_context = ' '.join(context_sentences)
+        sources_used = [sources[idx] for idx in top_indices[:len(context_sentences)]]
 
-        # Generate final answer by summarizing the sub-answers
-        print("\nGenerating final answer...")
-        final_answer = summarize_text(combined_sub_answers, summarizer_model, summarizer_tokenizer, device)
+        # Generate the answer
+        print("\nGenerating answer...")
+        final_answer = generate_answer(query, combined_context, lm_model, lm_tokenizer, device)
 
         # Display the final answer
         print("\nAnswer:")
         print(final_answer)
 
-        # Display citations (optional)
+        # Display citations
         print("\nRelevant Sources:")
         for source in set(sources_used):
             print(f"- {source}")
