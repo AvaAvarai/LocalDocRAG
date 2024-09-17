@@ -1,25 +1,27 @@
 import os
 import csv
-import pdfplumber
+import fitz
 import nltk
 import re
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import json
+import torch
 
 def download_nltk_data():
     print("Downloading NLTK data files...")
     nltk.download('punkt')
-    nltk.download('punkt_tab')
     print("NLTK data files downloaded.")
 
 def is_valid_sentence(sentence):
     sentence = sentence.strip()
-    if len(sentence) < 10:
+    if len(sentence.split()) < 5:  # At least 5 words
         return False
     if not re.search('[a-zA-Z]', sentence):
         return False
-    if re.search(r'\S+@\S+|http\S+|www\S+', sentence):
+    if re.search(r'\S+@\S+|http\S+|www\S+|©|\d{4}', sentence):
+        return False
+    if re.search(r'Fig\.|Table|Figure|Equation|Section|References|Copyright|Abstract|Introduction', sentence, re.IGNORECASE):
         return False
     if sentence.isupper():
         return False
@@ -27,25 +29,31 @@ def is_valid_sentence(sentence):
 
 def extract_sentences_from_pdf(pdf_path):
     sentences = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in tqdm(pdf.pages, desc=f"Processing {os.path.basename(pdf_path)}", unit="page"):
-            text = page.extract_text()
-            if text:
-                text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-                text = re.sub(r'\S+@\S+', '', text)
-                text = text.replace('\n', ' ').strip()
-                text = re.sub(r'-\s+', '', text)  # Remove hyphens and spaces following them
-                page_sentences = nltk.sent_tokenize(text, language='english')
-                sentences.extend(page_sentences)
+    doc = fitz.open(pdf_path)
+    for page_num, page in enumerate(doc, start=1):
+        text = page.get_text()
+        if text:
+            # Remove hyphenation at line breaks
+            text = re.sub(r'-\s*\n', '', text)
+            text = re.sub(r'\n', ' ', text)
+            # Clean text
+            text = re.sub(r'http\S+|www\S+|https\S+', '', text)
+            text = re.sub(r'\S+@\S+', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            # Tokenize sentences
+            page_sentences = nltk.sent_tokenize(text)
+            sentences.extend(page_sentences)
+    # Filter sentences
     sentences = [s.strip() for s in sentences if is_valid_sentence(s)]
     return sentences
 
 def process_pdfs():
-    pdf_folder = 'pdfs'
+    pdf_folder = 'pdfs'  # Ensure this folder exists and contains your PDF files
     output_csv = 'extracted_sentences.csv'
 
     model_name = 'all-MiniLM-L6-v2'
-    model = SentenceTransformer(model_name)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = SentenceTransformer(model_name, device=device)
 
     pdf_files = [filename for filename in os.listdir(pdf_folder) if filename.endswith('.pdf')]
 
@@ -57,10 +65,14 @@ def process_pdfs():
         for filename in tqdm(pdf_files, desc="Processing PDFs", unit="pdf"):
             pdf_path = os.path.join(pdf_folder, filename)
 
-            sentences = extract_sentences_from_pdf(pdf_path)
+            try:
+                sentences = extract_sentences_from_pdf(pdf_path)
+            except Exception as e:
+                print(f"Error processing {pdf_path}: {e}")
+                continue
 
             if sentences:
-                embeddings = model.encode(sentences, show_progress_bar=True)
+                embeddings = model.encode(sentences, show_progress_bar=True, batch_size=64)
 
                 for sentence, embedding in zip(sentences, embeddings):
                     embedding_str = json.dumps(embedding.tolist())
