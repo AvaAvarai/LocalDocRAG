@@ -38,8 +38,19 @@ def load_embeddings(csv_file):
         embeddings = np.array([])
     return sentences, sources, embeddings
 
+def summarize_context(context, model, tokenizer, device):
+    # Create the prompt for summarization
+    prompt = f"Summarize the following content to capture the key points:\n\n{context}"
+    # Encode the prompt
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(device)
+    # Generate the summary
+    outputs = model.generate(**inputs, max_length=512)
+    # Decode the summary
+    summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return summary.strip()
+
 def generate_answer(question, context, model, tokenizer, device):
-    # Create the prompt tailored for technical content
+    # Create the prompt for answer generation
     prompt = f"""You are a knowledgeable assistant specialized in technical domains. Using only the information provided in the context, answer the question precisely and include fine-grained details. Do not add any information that is not in the context.
 
     Question:
@@ -50,9 +61,9 @@ def generate_answer(question, context, model, tokenizer, device):
 
     Answer:"""
     # Encode the prompt
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024).to(device)
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(device)
     # Generate the answer
-    outputs = model.generate(**inputs, max_length=250)
+    outputs = model.generate(**inputs, max_length=512)
     # Decode the answer
     answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return answer.strip()
@@ -76,8 +87,8 @@ def main():
 
     embedder = SentenceTransformer(model_name, device=device)
 
-    # Initialize the language model and tokenizer for answer generation
-    lm_model_name = 'google/flan-t5-base'  # You can use 'google/flan-t5-large' if resources allow
+    # Initialize the language model and tokenizer
+    lm_model_name = 'google/flan-t5-large'  # Use a larger model if resources allow
     lm_tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
     lm_model = AutoModelForSeq2SeqLM.from_pretrained(lm_model_name).to(device)
 
@@ -95,26 +106,30 @@ def main():
         print("Computing similarities...")
         similarities = cosine_similarity([query_embedding], embeddings)[0]
 
-        # Get indices of top N similar sentences
-        top_n = 100 # Adjust this value as needed
-        top_indices = similarities.argsort()[-top_n:][::-1]
+        # Apply similarity threshold
+        similarity_threshold = 0.5  # Adjust as needed
+        relevant_indices = [idx for idx, score in enumerate(similarities) if score >= similarity_threshold]
 
-        # Combine top N sentences into context, ensuring total length is within limits
-        context_sentences = []
-        total_length = 0
-        max_length = 1000  # Adjust based on model's max input length
-        for idx in top_indices:
-            sentence = sentences[idx]
-            sentence_length = len(lm_tokenizer.encode(sentence))
-            if total_length + sentence_length > max_length:
-                break
-            context_sentences.append(sentence)
-            total_length += sentence_length
+        if not relevant_indices:
+            print("No relevant information found in the documents.")
+            continue
 
-        combined_context = ' '.join(context_sentences)
-        sources_used = [sources[idx] for idx in top_indices[:len(context_sentences)]]
+        # Collect all similar sentences
+        similar_sentences = [sentences[idx] for idx in relevant_indices]
+        sources_used = [sources[idx] for idx in relevant_indices]
 
-        # Generate the answer
+        # Combine all similar sentences into one context
+        combined_context = ' '.join(similar_sentences)
+
+        # Check if the context exceeds the model's max input length
+        max_input_length = 2048  # Adjust based on the model's max input length
+        context_token_length = len(lm_tokenizer.encode(combined_context))
+        if context_token_length > max_input_length:
+            # Summarize the context to reduce length
+            print("Context is too long, summarizing...")
+            combined_context = summarize_context(combined_context, lm_model, lm_tokenizer, device)
+
+        # Generate the final answer
         print("\nGenerating answer...")
         final_answer = generate_answer(query, combined_context, lm_model, lm_tokenizer, device)
 
