@@ -8,7 +8,7 @@ Project concept demonstrated, Reader-Answerer model begun, next visualization of
 
 ## Overview
 
-Reader: Load Files -> Parse Sentences -> Generate Sentence Embeddings -> Tag and Store in CSV
+Reader: Load Files -> Parse Sentences -> Generate Sentence Embeddings -> Tag and Store in CSV  
 Answerer: Load Sentences CSV -> Request User Query -> (Preprocess Query with LM slower but helps if query could be malformed or poorly articulated) -> Generate Embedding of Query -> Find ALL Sentences with Cosine Similarity above threshold (we used 0.50 = 50%) -> Sort Context Sentences by Similarity Metric (looking at neighboring sentences improves sort but is also slower) -> If length above max input of LM generate summary with LM (ASSUMED TO HAPPEN ALWAYS IF ENOUGH KNOWLEDGE IN CORPUS) -> Build Prompt -> Generate Answer with LM -> List Context Sources
 
 ## Current Status
