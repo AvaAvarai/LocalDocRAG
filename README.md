@@ -1,6 +1,6 @@
-# EmbedQA
+# LocalDocRAG
 
-EmbedQA is a semantic embedding-based question-answering system that processes PDFs to generate embeddings for sentences, enabling semantic search and question answering using these embeddings. The system utilizes `sentence-transformers` for generating embeddings and `transformers` for question answering. Currently embeddings are generated with `allenai/scibert_scivocab_uncased`.
+Local Document Retrieval Augmented Generation (RAG) with sentence embedding context for cited question answering with small language models.
 
 ## Overview
 
