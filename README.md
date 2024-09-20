@@ -1,19 +1,17 @@
 # LocalDocRAG
 
-Local Document Retrieval Augmented Generation (RAG) with sentence embedding context for cited question answering with small language models.
-
-## Overview
-
-1. **PDF Extraction**: Load and extract text from PDF files.
-2. **Text Cleaning and Splitting**: Clean and split the extracted text into semantically useful sentences.
-3. **Embedding Generation**: Generate embeddings for the cleaned sentences using a pre-trained model.
-4. **Similarity Search**: Find the top k most similar sentences to a given question.
-5. **Contextual Response Generation**: Combine the top k similar sentences and their neighboring sentences to form a context for generating a response using a question-answering model.
-6. **Graphical User Interface**: Provide a GUI for user interaction, allowing users to ask questions and get responses based on the processed PDF content.
+Local Document Retrieval Augmented Generation (RAG) with sentence embedding context for cited question answering with small language models (LM).
 
 ## Current Status
 
-Our project has been rebuilt and will be in a WIP (Work In Progress) state for some time.
+Project concept demonstrated, Reader-Answerer model begun, next visualization of semantic search. Currently runs in terminal again, will add GUI back soon.
+
+## Overview
+
+Reader: Load Files -> Parse Sentences -> Generate Sentence Embeddings -> Tag and Store in CSV
+Answerer: Load Sentences CSV -> Request User Query -> (Preprocess Query with LM slower but helps if query could be malformed or poorly articulated) -> Generate Embedding of Query -> Find ALL Sentences with Cosine Similarity above threshold (we used 0.50 = 50%) -> Sort Context Sentences by Similarity Metric (looking at neighboring sentences improves sort but is also slower) -> If length above max input of LM generate summary with LM (ASSUMED TO HAPPEN ALWAYS IF ENOUGH KNOWLEDGE IN CORPUS) -> Build Prompt -> Generate Answer with LM -> List Context Sources
+
+## Current Status
 
 ## Installation
 
